@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VidCut Studio | Auto Video Cutter & Orientation Switcher</title>
+  <meta name="description" content="100% Client-Side video cutter. Automatically slice long videos into shorter clips (e.g., 60s into 10s segments) with orientation conversion for TikTok, Reels, and Shorts.">
+  <link rel="stylesheet" href="./css/styles.css">
+  <script src="./js/jszip.min.js"></script>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-icon">✂️</div>
+        <div class="brand-text">
+          <h1>VidCut Studio</h1>
+          <p>Auto Video Cutter & Social Orientation Switcher</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="badge">🔒 100% Client-Side</span>
+        <span class="badge">⚡ Zero Uploads</span>
+        <a href="https://github.com/everlovingvijay/video-cutter" target="_blank" rel="noopener noreferrer" class="badge badge-github">
+          ⭐ GitHub Repository
+        </a>
+      </div>
+    </header>
+
+    <!-- Upload & Ingestion Zone -->
+    <section class="upload-card" id="dropzone">
+      <div class="upload-icon">📹</div>
+      <h2 class="upload-title">Drop your video here, or browse from your computer</h2>
+      <p class="upload-subtitle">Supports MP4, MOV, WebM, MKV • Processed locally in your browser with 100% privacy</p>
+      
+      <div class="upload-actions">
+        <input type="file" id="fileInput" accept="video/*" style="display: none;">
+        <button type="button" class="btn btn-primary" id="browseBtn" onclick="document.getElementById('fileInput').click()">
+          📁 Choose Video File
+        </button>
+        <button type="button" class="btn btn-secondary" id="sampleBtn">
+          ⚡ Try 60s Demo Video
+        </button>
+      </div>
+
+      <div class="url-input-bar" onclick="event.stopPropagation()">
+        <input type="url" id="urlInput" placeholder="Or paste public video URL (e.g., raw GitHub video link)...">
+        <button type="button" class="btn btn-secondary btn-sm" id="loadUrlBtn">Load Video</button>
+      </div>
+    </section>
+
+    <!-- Main Workspace (Hidden until video loaded) -->
+    <main id="workspace" style="display: none;">
+      
+      <!-- Video Information Bar -->
+      <div class="video-info-bar">
+        <div class="video-info-stats">
+          <div class="stat-item">📁 <span class="stat-value" id="infoFileName">-</span></div>
+          <div class="stat-item">⏱️ Duration: <span class="stat-value" id="infoDuration">-</span></div>
+          <div class="stat-item">📐 Resolution: <span class="stat-value" id="infoResolution">-</span></div>
+          <div class="stat-item">🔄 Aspect: <span class="stat-value" id="infoAspect">-</span></div>
+          <div class="stat-item">💾 Size: <span class="stat-value" id="infoFileSize">-</span></div>
+        </div>
+      </div>
+
+      <!-- Studio Grid: Player on left, Controls on right -->
+      <div class="studio-grid">
+        
+        <!-- Left Column: Video Stage & Interactive Timeline -->
+        <div class="preview-pane">
+          <div class="pane-header">
+            <div class="pane-title">
+              <span>Preview Stage</span>
+            </div>
+            <div class="preview-tabs">
+              <button class="preview-tab-btn active" id="tabSource">Source Video</button>
+              <button class="preview-tab-btn" id="tabTransform">Live Transform Preview</button>
+            </div>
+          </div>
+
+          <!-- Video Stage -->
+          <div class="stage-container">
+            <span class="stage-badge" id="stageBadge">Original Source Video</span>
+            <video id="sourceVideo" controls playsinline></video>
+            <canvas id="previewCanvas"></canvas>
+          </div>
+
+          <!-- Interactive Slices Timeline -->
+          <div class="timeline-section">
+            <div class="timeline-header">
+              <span><strong>Visual Split Timeline</strong> (Click any clip to preview)</span>
+              <span id="timelineTime">0:00 / 0:00</span>
+            </div>
+
+            <div class="timeline-bar" id="timelineBar">
+              <div class="timeline-progress-needle" id="timelineNeedle"></div>
+            </div>
+
+            <!-- Segment Badges / Chips -->
+            <div class="segments-chips-container" id="segmentChips"></div>
+          </div>
+        </div>
+
+        <!-- Right Column: Settings & Configuration -->
+        <div class="controls-pane">
+          
+          <!-- 1. Split Mode -->
+          <div class="control-section">
+            <div class="section-label">
+              <span>1. Split Strategy</span>
+              <small>How to divide the video</small>
+            </div>
+            <div class="tab-switcher">
+              <button type="button" class="tab-btn active" id="modeDurationBtn">⏱️ Fixed Duration</button>
+              <button type="button" class="tab-btn" id="modePartsBtn">🔢 Equal Parts</button>
+            </div>
+
+            <!-- Duration input -->
+            <div class="input-with-presets" id="durationControlGroup">
+              <div class="duration-input-wrapper">
+                <input type="number" id="durationInput" min="1" max="600" step="1" value="10">
+                <span>seconds / clip</span>
+              </div>
+              <div class="preset-pills">
+                <span class="preset-pill" data-val="5">5s</span>
+                <span class="preset-pill active" data-val="10">10s</span>
+                <span class="preset-pill" data-val="15">15s (Stories)</span>
+                <span class="preset-pill" data-val="30">30s (Shorts)</span>
+                <span class="preset-pill" data-val="60">60s (Reels)</span>
+              </div>
+            </div>
+
+            <!-- Parts input -->
+            <div class="input-with-presets" id="partsControlGroup" style="display: none;">
+              <div class="duration-input-wrapper">
+                <input type="number" id="partsInput" min="2" max="50" step="1" value="6">
+                <span>equal clips</span>
+              </div>
+            </div>
+
+            <!-- Remainder handling -->
+            <div style="margin-top: 6px;">
+              <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">
+                Remainder Segment Policy (if video has uneven end):
+              </label>
+              <select class="studio-select" id="remainderSelect">
+                <option value="keep">Keep remainder as last clip (e.g. 10s + 10s + 4s)</option>
+                <option value="merge">Merge remainder with previous clip (e.g. 10s + 14s)</option>
+                <option value="discard">Discard remainder clip</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 2. Target Orientation -->
+          <div class="control-section">
+            <div class="section-label">
+              <span>2. Output Orientation</span>
+              <small>Target social aspect ratio</small>
+            </div>
+            <div class="aspect-grid">
+              <div class="aspect-card selected" data-aspect="9:16">
+                <div class="aspect-icon-box shape-9-16"></div>
+                <div class="aspect-title">9:16 Portrait</div>
+                <div class="aspect-sub">Shorts / Reels / TikTok</div>
+              </div>
+              <div class="aspect-card" data-aspect="1:1">
+                <div class="aspect-icon-box shape-1-1"></div>
+                <div class="aspect-title">1:1 Square</div>
+                <div class="aspect-sub">Instagram / Twitter</div>
+              </div>
+              <div class="aspect-card" data-aspect="16:9">
+                <div class="aspect-icon-box shape-16-9"></div>
+                <div class="aspect-title">16:9 Landscape</div>
+                <div class="aspect-sub">YouTube / TV</div>
+              </div>
+              <div class="aspect-card" data-aspect="4:5">
+                <div class="aspect-icon-box shape-4-5"></div>
+                <div class="aspect-title">4:5 Social Feed</div>
+                <div class="aspect-sub">Instagram Portrait</div>
+              </div>
+              <div class="aspect-card" data-aspect="original">
+                <div class="aspect-icon-box shape-orig"></div>
+                <div class="aspect-title">Original</div>
+                <div class="aspect-sub">Keep source ratio</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Framing & Background Style -->
+          <div class="control-section">
+            <div class="section-label">
+              <span>3. Framing Style</span>
+              <small>How to fit video into target orientation</small>
+            </div>
+            <div class="framing-grid">
+              <div class="framing-card selected" data-fit="blur" title="Scales video to background with gaussian blur. Keeps entire original video uncropped in center.">
+                <span class="framing-icon">🌟</span>
+                <span>Blurred Background</span>
+              </div>
+              <div class="framing-card" data-fit="crop" title="Scales up to cover the entire frame without any borders.">
+                <span class="framing-icon">✂️</span>
+                <span>Smart Crop</span>
+              </div>
+              <div class="framing-card" data-fit="fit" title="Preserves full frame with clean black letterbox padding.">
+                <span class="framing-icon">⬛</span>
+                <span>Letterbox</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Quality Resolution -->
+          <div class="control-section">
+            <div class="section-label">
+              <span>4. Export Quality</span>
+              <small>Resolution</small>
+            </div>
+            <select class="studio-select" id="resolutionSelect">
+              <option value="1080p">1080p Full HD (Best quality for TikTok & Reels)</option>
+              <option value="720p">720p HD (Blazing fast processing)</option>
+            </select>
+          </div>
+
+          <!-- Summary & Master Cut Button -->
+          <div class="summary-box" id="summaryBox">
+            ✂️ Will slice into <strong>6 videos</strong> (10s target)
+          </div>
+
+          <button type="button" class="btn-cut-master" id="masterCutBtn">
+            ✂️ Cut & Export 6 Videos
+          </button>
+
+        </div>
+      </div>
+
+      <!-- Processing Progress Card -->
+      <section class="processing-card" id="processingCard">
+        <div class="processing-header">
+          <div class="processing-status-title">
+            <span class="spinner">⏳</span>
+            <span id="processingStatus">Processing segments...</span>
+          </div>
+          <span style="font-weight: 700; color: #a5b4fc;" id="progressPercent">0%</span>
+        </div>
+
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="processing-details" id="processingDetails">
+          <span>Preparing encoder...</span>
+          <button type="button" class="btn btn-secondary btn-sm" id="cancelBtn">Stop Export</button>
+        </div>
+      </section>
+
+      <!-- Results Gallery & Download -->
+      <section class="results-section" id="resultsSection">
+        <div class="results-header">
+          <h2 class="results-title" id="resultsCount">🎉 Sliced Segments</h2>
+          <button type="button" class="btn btn-primary" id="downloadAllZipBtn">
+            📦 Download All as ZIP
+          </button>
+        </div>
+
+        <div class="results-grid" id="resultsGrid">
+          <!-- Populated dynamically -->
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Information & Guide Section -->
+    <section class="info-guide">
+      <div class="guide-card">
+        <h3>⚡ 100% Client-Side Processing</h3>
+        <p>Your video is processed completely in your browser using HTML5 Canvas and Media Streams. No files are ever uploaded to any server or cloud, ensuring maximum speed, zero data transfer limits, and 100% privacy.</p>
+      </div>
+
+      <div class="guide-card">
+        <h3>📱 Social Media Ready</h3>
+        <p>Instantly repurpose long YouTube or podcast videos into <strong>9:16 vertical clips</strong> for TikTok, Instagram Reels, and YouTube Shorts with popular <strong>Blurred Background</strong> padding or smart crop.</p>
+      </div>
+
+      <div class="guide-card">
+        <h3>🌐 1-Click GitHub Pages Hosting</h3>
+        <p>Deploy this tool on your own public GitHub repo in under 60 seconds with zero configuration. Works immediately on <code>https://everlovingvijay.github.io/video-cutter/</code>.</p>
+      </div>
+    </section>
+
+    <footer>
+      <p>VidCut Studio &bull; Built with ❤️ for <a href="https://github.com/everlovingvijay" target="_blank" rel="noopener noreferrer">@everlovingvijay</a> &bull; Open Source</p>
+    </footer>
+
+  </div>
+
+  <script src="./js/video-engine.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
