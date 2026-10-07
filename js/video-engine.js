@@ -382,9 +382,19 @@ class VideoEngine {
       if (filterPreset === 'olden_days') this.drawFilmGrain(ctx, targetW, targetH);
     }
 
-    // 3. Interactive Blur Brush Mask (Selective Logo / Face Blurring)
+    // 3. Interactive Frosted Glass Blur Mask (Selective Logo / Face Blurring)
     if (maskCanvas && maskCanvas.width > 0 && maskCanvas.height > 0) {
-      this.applyBlurMask(ctx, video, targetW, targetH, maskCanvas, blurStrength, fitMode, filterStr);
+      this.applyBlurMask(
+        ctx,
+        video,
+        targetW,
+        targetH,
+        maskCanvas,
+        blurStrength,
+        fitMode,
+        filterStr,
+        options.frostedSheen !== undefined ? options.frostedSheen : 0.05
+      );
     }
 
     // 4. Transitions (Fade In/Out, Flash)
@@ -398,10 +408,9 @@ class VideoEngine {
   }
 
   /**
-   * Composites selective blur over painted mask region (zero GPU strain, native 2D compositing)
+   * Composites authentic frosted glass blur over painted mask region (optical refraction, zero white paint)
    */
-  applyBlurMask(ctx, video, targetW, targetH, maskCanvas, blurRadius = 18, fitMode = 'blur', filterStr = 'none') {
-    // Resize offscreen blur buffer if needed
+  applyBlurMask(ctx, video, targetW, targetH, maskCanvas, blurRadius = 18, fitMode = 'blur', filterStr = 'none', frostedSheen = 0.05) {
     if (this.blurBufferCanvas.width !== targetW || this.blurBufferCanvas.height !== targetH) {
       this.blurBufferCanvas.width = targetW;
       this.blurBufferCanvas.height = targetH;
@@ -411,8 +420,9 @@ class VideoEngine {
     bCtx.setTransform(1, 0, 0, 1, 0, 0);
     bCtx.clearRect(0, 0, targetW, targetH);
 
-    // Draw blurred copy of the video frame
-    bCtx.filter = `blur(${blurRadius}px)` + (filterStr !== 'none' ? ` ${filterStr}` : '');
+    // 1. Draw blurred copy of the video frame with glassmorphism vibrancy & brightness
+    const glassFilter = `blur(${blurRadius}px) brightness(1.06) contrast(1.04) saturate(1.08)` + (filterStr !== 'none' ? ` ${filterStr}` : '');
+    bCtx.filter = glassFilter;
     const srcW = video.videoWidth || 1920;
     const srcH = video.videoHeight || 1080;
 
@@ -428,14 +438,24 @@ class VideoEngine {
       bCtx.drawImage(video, (targetW - w) / 2, (targetH - h) / 2, w, h);
     }
 
-    // Clip blurred copy using the user's painted alpha mask
+    // 2. Add subtle frosted glass specular sheen (delicate translucent highlight, NOT solid white)
+    if (frostedSheen > 0) {
+      bCtx.filter = 'none';
+      bCtx.fillStyle = `rgba(255, 255, 255, ${frostedSheen})`;
+      bCtx.fillRect(0, 0, targetW, targetH);
+    }
+
+    // 3. Clip blurred copy using the user's painted alpha mask
     bCtx.filter = 'none';
     bCtx.globalCompositeOperation = 'destination-in';
     bCtx.drawImage(maskCanvas, 0, 0, targetW, targetH);
     bCtx.globalCompositeOperation = 'source-over';
 
-    // Composite blurred region on top of main canvas
+    // 4. Composite frosted glass blur seamlessly onto main video canvas
+    ctx.save();
+    ctx.filter = 'none';
     ctx.drawImage(this.blurBufferCanvas, 0, 0);
+    ctx.restore();
   }
 
   /**

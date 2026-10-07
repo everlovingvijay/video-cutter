@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Blur Brush Mask
     brushSize: 35,
     blurStrength: 20,
+    frostedSheen: 0.05,
     isBoxBlurMode: false,
 
     // Transform
@@ -233,6 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Adjust Canvas Painting Mode
       if (toolKey === 'blur_brush') {
         paintCanvas.classList.add('active-brush');
+        setPreviewMode('transform');
       } else {
         paintCanvas.classList.remove('active-brush');
       }
@@ -403,17 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!previewCanvas) return;
     paintCanvas.width = previewCanvas.width || 1280;
     paintCanvas.height = previewCanvas.height || 720;
-    redrawPaintCanvas();
-  }
-
-  function redrawPaintCanvas() {
     paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
-    // Draw mask representation onto paintCanvas with semi-transparent cyan
-    if (maskCanvas.width > 0 && maskCanvas.height > 0) {
-      paintCtx.save();
-      paintCtx.drawImage(maskCanvas, 0, 0, paintCanvas.width, paintCanvas.height);
-      paintCtx.restore();
-    }
   }
 
   function updatePreview() {
@@ -431,7 +423,8 @@ document.addEventListener('DOMContentLoaded', () => {
         flipH: state.flipH,
         flipV: state.flipV,
         maskCanvas: maskCanvas,
-        blurStrength: state.blurStrength
+        blurStrength: state.blurStrength,
+        frostedSheen: state.frostedSheen
       });
 
       syncPaintCanvasSize();
@@ -457,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   /* -------------------------------------------------------------
-     4. Interactive Blur Brush Painting Logic
+     4. Interactive Glass Blur Brush Painting Logic
   ------------------------------------------------------------- */
   function getCanvasCoords(e) {
     const rect = paintCanvas.getBoundingClientRect();
@@ -465,7 +458,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const scaleY = maskCanvas.height / rect.height;
     return {
       x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
+      y: (e.clientY - rect.top) * scaleY,
+      screenX: e.clientX - rect.left,
+      screenY: e.clientY - rect.top
     };
   }
 
@@ -484,17 +479,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   paintCanvas.addEventListener('pointermove', (e) => {
-    if (!isPainting || activeTool !== 'blur_brush') return;
+    if (activeTool !== 'blur_brush') return;
     const pos = getCanvasCoords(e);
 
-    if (state.isBoxBlurMode) {
-      // Draw temporary box outline on paintCanvas
-      redrawPaintCanvas();
+    // Draw active brush cursor ring on paintCanvas
+    paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
+
+    if (state.isBoxBlurMode && isPainting) {
+      // Draw drag box outline
       const rect = paintCanvas.getBoundingClientRect();
       const pStartX = (boxStartX / maskCanvas.width) * paintCanvas.width;
       const pStartY = (boxStartY / maskCanvas.height) * paintCanvas.height;
-      const pCurX = (pos.x / maskCanvas.width) * paintCanvas.width;
-      const pCurY = (pos.y / maskCanvas.height) * paintCanvas.height;
+      const pCurX = pos.screenX;
+      const pCurY = pos.screenY;
 
       paintCtx.strokeStyle = '#6366f1';
       paintCtx.lineWidth = 2;
@@ -502,15 +499,40 @@ document.addEventListener('DOMContentLoaded', () => {
       paintCtx.strokeRect(pStartX, pStartY, pCurX - pStartX, pCurY - pStartY);
       paintCtx.setLineDash([]);
     } else {
-      drawBrushStroke(pos.x, pos.y);
+      // Draw subtle circular cursor ring showing brush footprint
+      paintCtx.save();
+      paintCtx.strokeStyle = 'rgba(99, 102, 241, 0.85)';
+      paintCtx.lineWidth = 2;
+      paintCtx.setLineDash([3, 3]);
+      paintCtx.beginPath();
+      const displayRadius = (state.brushSize / maskCanvas.width) * paintCanvas.width;
+      paintCtx.arc(pos.screenX, pos.screenY, displayRadius, 0, Math.PI * 2);
+      paintCtx.stroke();
+      paintCtx.restore();
+
+      if (isPainting) {
+        drawBrushStroke(pos.x, pos.y);
+      }
+    }
+  });
+
+  paintCanvas.addEventListener('pointerleave', () => {
+    if (!isPainting) {
+      paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
     }
   });
 
   function drawBrushStroke(x, y) {
     maskCtx.save();
-    maskCtx.fillStyle = 'white';
+    // Soft radial feathering for authentic smooth optical glass blur
+    const r = state.brushSize;
+    const grad = maskCtx.createRadialGradient(x, y, r * 0.35, x, y, r);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+    grad.addColorStop(0.75, 'rgba(255, 255, 255, 0.9)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0.0)');
+    maskCtx.fillStyle = grad;
     maskCtx.beginPath();
-    maskCtx.arc(x, y, state.brushSize, 0, Math.PI * 2);
+    maskCtx.arc(x, y, r, 0, Math.PI * 2);
     maskCtx.fill();
     maskCtx.restore();
 
@@ -531,10 +553,10 @@ document.addEventListener('DOMContentLoaded', () => {
       maskCtx.fillRect(boxStartX, boxStartY, w, h);
       maskCtx.restore();
 
-      // Exit box mode back to brush
       state.isBoxBlurMode = false;
       boxBlurBtn.classList.remove('btn-primary');
       boxBlurBtn.classList.add('btn-secondary');
+      paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
       updatePreview();
     }
   });
@@ -551,6 +573,32 @@ document.addEventListener('DOMContentLoaded', () => {
     state.blurStrength = parseInt(e.target.value, 10);
     blurStrengthVal.textContent = `${state.blurStrength}px`;
     updatePreview();
+  });
+
+  const frostedSheenSlider = document.getElementById('frostedSheenSlider');
+  const frostedSheenVal = document.getElementById('frostedSheenVal');
+  const sheenPills = document.querySelectorAll('[data-sheen]');
+
+  if (frostedSheenSlider) {
+    frostedSheenSlider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10);
+      state.frostedSheen = val / 100;
+      if (frostedSheenVal) frostedSheenVal.textContent = val === 0 ? '0% (Pure Glass)' : `${val}%`;
+      sheenPills.forEach(p => p.classList.remove('active'));
+      updatePreview();
+    });
+  }
+
+  sheenPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      sheenPills.forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      const val = parseInt(pill.dataset.sheen, 10);
+      state.frostedSheen = val / 100;
+      if (frostedSheenSlider) frostedSheenSlider.value = val;
+      if (frostedSheenVal) frostedSheenVal.textContent = val === 0 ? '0% (Pure Glass)' : `${val}%`;
+      updatePreview();
+    });
   });
 
   clearBrushBtn.addEventListener('click', () => {
@@ -944,7 +992,8 @@ document.addEventListener('DOMContentLoaded', () => {
           flipH: state.flipH,
           flipV: state.flipV,
           maskCanvas: maskCanvas,
-          blurStrength: state.blurStrength
+          blurStrength: state.blurStrength,
+          frostedSheen: state.frostedSheen
         },
         (prog) => {
           const pct = Math.round(prog * 100);
@@ -1001,7 +1050,8 @@ document.addEventListener('DOMContentLoaded', () => {
           flipH: state.flipH,
           flipV: state.flipV,
           maskCanvas: maskCanvas,
-          blurStrength: state.blurStrength
+          blurStrength: state.blurStrength,
+          frostedSheen: state.frostedSheen
         },
         ({ currentIndex, totalSegments, overallProgress }) => {
           const pct = Math.round(overallProgress * 100);
