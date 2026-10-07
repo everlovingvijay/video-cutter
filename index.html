@@ -3,295 +3,605 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VidCut Studio | Auto Video Cutter & Orientation Switcher</title>
-  <meta name="description" content="100% Client-Side video cutter. Automatically slice long videos into shorter clips (e.g., 60s into 10s segments) with orientation conversion for TikTok, Reels, and Shorts.">
+  <title>VidCut Omni Studio | Lightweight Client-Side Video Suite</title>
+  <meta name="description" content="100% Client-Side Omni Video Editor: Filters (Grayscale, Film Grain, Olden Days, Future), Motion Zoom, Transitions, Interactive Blur Brush, Auto Cutter, and Screen Recorder.">
   <link rel="stylesheet" href="./css/styles.css">
   <script src="./js/jszip.min.js"></script>
 </head>
 <body>
 
-  <div class="container">
-    <!-- Header -->
-    <header>
-      <div class="brand">
-        <div class="brand-icon">✂️</div>
+  <div class="app-wrapper">
+    
+    <!-- Omni Suite Sidebar Menu (Inspired by Reference UI) -->
+    <aside class="omni-sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">🎬</div>
         <div class="brand-text">
-          <h1>VidCut Studio</h1>
-          <p>Auto Video Cutter & Social Orientation Switcher</p>
+          <h1>VidCut Omni</h1>
+          <p>Client-Side Studio</p>
         </div>
       </div>
-      <div class="header-badges">
-        <span class="badge">🔒 100% Client-Side</span>
-        <span class="badge">⚡ Zero Uploads</span>
-        <a href="https://github.com/everlovingvijay/video-cutter" target="_blank" rel="noopener noreferrer" class="badge badge-github">
+
+      <nav class="sidebar-nav">
+        <button class="sidebar-item active" data-tool="video_editor">
+          <span class="item-icon">🎨</span>
+          <span>Omni Video Editor</span>
+        </button>
+
+        <button class="sidebar-item" data-tool="blur_brush">
+          <span class="item-icon">🖌️</span>
+          <span>Blur Brush & Mask</span>
+        </button>
+
+        <button class="sidebar-item" data-tool="video_cutter">
+          <span class="item-icon">✂️</span>
+          <span>Auto Cutter & Slicer</span>
+        </button>
+
+        <button class="sidebar-item" data-tool="crop_rotate">
+          <span class="item-icon">📐</span>
+          <span>Crop, Rotate & Flip</span>
+        </button>
+
+        <button class="sidebar-item" data-tool="speed_volume">
+          <span class="item-icon">⚡</span>
+          <span>Speed & Volume</span>
+        </button>
+
+        <button class="sidebar-item" data-tool="screen_recorder">
+          <span class="item-icon">📹</span>
+          <span>Screen & Camera</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div>🔒 100% Client-Side & Private</div>
+        <div>🚀 Zero Server / Low GPU</div>
+        <a href="https://github.com/everlovingvijay/video-cutter" target="_blank" rel="noopener noreferrer">
           ⭐ GitHub Repository
         </a>
       </div>
-    </header>
+    </aside>
 
-    <!-- Upload & Ingestion Zone -->
-    <section class="upload-card" id="dropzone">
-      <div class="upload-icon">📹</div>
-      <h2 class="upload-title">Drop your video here, or browse from your computer</h2>
-      <p class="upload-subtitle">Supports MP4, MOV, WebM, MKV • Processed locally in your browser with 100% privacy</p>
+    <!-- Main Content Work Area -->
+    <div class="main-content">
       
-      <div class="upload-actions">
-        <input type="file" id="fileInput" accept="video/*" style="display: none;">
-        <button type="button" class="btn btn-primary" id="browseBtn" onclick="document.getElementById('fileInput').click()">
-          📁 Choose Video File
-        </button>
-        <button type="button" class="btn btn-secondary" id="sampleBtn">
-          ⚡ Try 60s Demo Video
-        </button>
-      </div>
-
-      <div class="url-input-bar" onclick="event.stopPropagation()">
-        <input type="url" id="urlInput" placeholder="Or paste public video URL (e.g., raw GitHub video link)...">
-        <button type="button" class="btn btn-secondary btn-sm" id="loadUrlBtn">Load Video</button>
-      </div>
-    </section>
-
-    <!-- Main Workspace (Hidden until video loaded) -->
-    <main id="workspace" style="display: none;">
-      
-      <!-- Video Information Bar -->
-      <div class="video-info-bar">
-        <div class="video-info-stats">
-          <div class="stat-item">📁 <span class="stat-value" id="infoFileName">-</span></div>
-          <div class="stat-item">⏱️ Duration: <span class="stat-value" id="infoDuration">-</span></div>
-          <div class="stat-item">📐 Resolution: <span class="stat-value" id="infoResolution">-</span></div>
-          <div class="stat-item">🔄 Aspect: <span class="stat-value" id="infoAspect">-</span></div>
-          <div class="stat-item">💾 Size: <span class="stat-value" id="infoFileSize">-</span></div>
+      <!-- Top Sticky Header -->
+      <header class="top-header">
+        <div class="header-title-box">
+          <h2 id="activeToolTitle">Omni Video Editor</h2>
+          <p id="activeToolSubtitle">Color presets, motion zoom, cinematic film grain, and transitions</p>
         </div>
-      </div>
+        <div class="header-badges">
+          <span class="badge">⚡ Hardware-Accelerated</span>
+          <span class="badge">🔒 Zero Uploads</span>
+          <a href="https://github.com/everlovingvijay/video-cutter" target="_blank" rel="noopener noreferrer" class="badge badge-github">
+            GitHub
+          </a>
+        </div>
+      </header>
 
-      <!-- Studio Grid: Player on left, Controls on right -->
-      <div class="studio-grid">
+      <div class="container">
         
-        <!-- Left Column: Video Stage & Interactive Timeline -->
-        <div class="preview-pane">
-          <div class="pane-header">
-            <div class="pane-title">
-              <span>Preview Stage</span>
-            </div>
-            <div class="preview-tabs">
-              <button class="preview-tab-btn active" id="tabSource">Source Video</button>
-              <button class="preview-tab-btn" id="tabTransform">Live Transform Preview</button>
-            </div>
-          </div>
-
-          <!-- Video Stage -->
-          <div class="stage-container">
-            <span class="stage-badge" id="stageBadge">Original Source Video</span>
-            <video id="sourceVideo" controls playsinline></video>
-            <canvas id="previewCanvas"></canvas>
-          </div>
-
-          <!-- Interactive Slices Timeline -->
-          <div class="timeline-section">
-            <div class="timeline-header">
-              <span><strong>Visual Split Timeline</strong> (Click any clip to preview)</span>
-              <span id="timelineTime">0:00 / 0:00</span>
-            </div>
-
-            <div class="timeline-bar" id="timelineBar">
-              <div class="timeline-progress-needle" id="timelineNeedle"></div>
-            </div>
-
-            <!-- Segment Badges / Chips -->
-            <div class="segments-chips-container" id="segmentChips"></div>
-          </div>
-        </div>
-
-        <!-- Right Column: Settings & Configuration -->
-        <div class="controls-pane">
+        <!-- Video Upload & Ingestion Zone -->
+        <section class="upload-card" id="dropzone">
+          <div class="upload-icon">📹</div>
+          <h2 class="upload-title">Drop your video here, or browse from your device</h2>
+          <p class="upload-subtitle">Supports MP4, MOV, WebM, MKV • Instant local processing with zero server uploads</p>
           
-          <!-- 1. Split Mode -->
-          <div class="control-section">
-            <div class="section-label">
-              <span>1. Split Strategy</span>
-              <small>How to divide the video</small>
-            </div>
-            <div class="tab-switcher">
-              <button type="button" class="tab-btn active" id="modeDurationBtn">⏱️ Fixed Duration</button>
-              <button type="button" class="tab-btn" id="modePartsBtn">🔢 Equal Parts</button>
-            </div>
+          <div class="upload-actions">
+            <input type="file" id="fileInput" accept="video/*" style="display: none;">
+            <button type="button" class="btn btn-primary" id="browseBtn" onclick="document.getElementById('fileInput').click()">
+              📁 Choose Video File
+            </button>
+            <button type="button" class="btn btn-gold" id="sampleBtn">
+              ⚡ Try 60s Demo Video
+            </button>
+          </div>
 
-            <!-- Duration input -->
-            <div class="input-with-presets" id="durationControlGroup">
-              <div class="duration-input-wrapper">
-                <input type="number" id="durationInput" min="1" max="600" step="1" value="10">
-                <span>seconds / clip</span>
-              </div>
-              <div class="preset-pills">
-                <span class="preset-pill" data-val="5">5s</span>
-                <span class="preset-pill active" data-val="10">10s</span>
-                <span class="preset-pill" data-val="15">15s (Stories)</span>
-                <span class="preset-pill" data-val="30">30s (Shorts)</span>
-                <span class="preset-pill" data-val="60">60s (Reels)</span>
-              </div>
-            </div>
+          <div class="url-input-bar" onclick="event.stopPropagation()">
+            <input type="url" id="urlInput" placeholder="Or paste public video URL (e.g., raw GitHub video link)...">
+            <button type="button" class="btn btn-secondary btn-sm" id="loadUrlBtn">Load Video</button>
+          </div>
+        </section>
 
-            <!-- Parts input -->
-            <div class="input-with-presets" id="partsControlGroup" style="display: none;">
-              <div class="duration-input-wrapper">
-                <input type="number" id="partsInput" min="2" max="50" step="1" value="6">
-                <span>equal clips</span>
-              </div>
-            </div>
-
-            <!-- Remainder handling -->
-            <div style="margin-top: 6px;">
-              <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">
-                Remainder Segment Policy (if video has uneven end):
-              </label>
-              <select class="studio-select" id="remainderSelect">
-                <option value="keep">Keep remainder as last clip (e.g. 10s + 10s + 4s)</option>
-                <option value="merge">Merge remainder with previous clip (e.g. 10s + 14s)</option>
-                <option value="discard">Discard remainder clip</option>
-              </select>
+        <!-- Main Workspace (Hidden until video loaded) -->
+        <main id="workspace" style="display: none;">
+          
+          <!-- Video Information Bar -->
+          <div class="video-info-bar">
+            <div class="video-info-stats">
+              <div class="stat-item">📁 <span class="stat-value" id="infoFileName">-</span></div>
+              <div class="stat-item">⏱️ Duration: <span class="stat-value" id="infoDuration">-</span></div>
+              <div class="stat-item">📐 Resolution: <span class="stat-value" id="infoResolution">-</span></div>
+              <div class="stat-item">🔄 Aspect: <span class="stat-value" id="infoAspect">-</span></div>
+              <div class="stat-item">💾 Size: <span class="stat-value" id="infoFileSize">-</span></div>
             </div>
           </div>
 
-          <!-- 2. Target Orientation -->
-          <div class="control-section">
-            <div class="section-label">
-              <span>2. Output Orientation</span>
-              <small>Target social aspect ratio</small>
+          <!-- Studio Grid: Stage Player on Left, Tool Controls on Right -->
+          <div class="studio-grid">
+            
+            <!-- Left Column: Video Stage & Live Timeline -->
+            <div class="preview-pane">
+              <div class="pane-header">
+                <div class="pane-title">
+                  <span>Video Preview Stage</span>
+                </div>
+                <div class="preview-tabs">
+                  <button class="preview-tab-btn" id="tabSource">Source Video</button>
+                  <button class="preview-tab-btn active" id="tabTransform">Live Studio Preview</button>
+                </div>
+              </div>
+
+              <!-- Interactive Video Stage -->
+              <div class="stage-container" id="stageContainer">
+                <span class="stage-badge" id="stageBadge">Live Studio Preview</span>
+                <video id="sourceVideo" controls playsinline></video>
+                <canvas id="previewCanvas"></canvas>
+                <!-- Interactive Canvas for Blur Brush Painting -->
+                <canvas id="paintCanvas"></canvas>
+              </div>
+
+              <!-- Timeline & Segment Slices -->
+              <div class="timeline-section">
+                <div class="timeline-header">
+                  <span id="timelineTitle"><strong>Timeline Scrubber</strong></span>
+                  <span id="timelineTime">0:00 / 0:00</span>
+                </div>
+
+                <div class="timeline-bar" id="timelineBar">
+                  <div class="timeline-progress-needle" id="timelineNeedle"></div>
+                </div>
+
+                <!-- Segment Badges (Cutter mode) -->
+                <div class="segments-chips-container" id="segmentChips" style="display: none;"></div>
+              </div>
             </div>
-            <div class="aspect-grid">
-              <div class="aspect-card selected" data-aspect="9:16">
-                <div class="aspect-icon-box shape-9-16"></div>
-                <div class="aspect-title">9:16 Portrait</div>
-                <div class="aspect-sub">Shorts / Reels / TikTok</div>
+
+            <!-- Right Column: Contextual Tool Panels -->
+            <div class="controls-pane">
+
+              <!-- ================= 1. TOOL PANEL: OMNI VIDEO EDITOR ================= -->
+              <div class="tool-panel active" id="panel_video_editor">
+                
+                <!-- Filter Presets -->
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Aesthetic Filter Presets</span>
+                    <small>Zero-GPU instant color grading</small>
+                  </div>
+                  <div class="filters-grid">
+                    <div class="filter-card selected" data-filter="none">
+                      <div class="filter-swatch swatch-none"></div>
+                      <span class="filter-name">Normal</span>
+                    </div>
+                    <div class="filter-card" data-filter="grayscale">
+                      <div class="filter-swatch swatch-grayscale"></div>
+                      <span class="filter-name">Grayscale</span>
+                    </div>
+                    <div class="filter-card" data-filter="fine_grain">
+                      <div class="filter-swatch swatch-grain"></div>
+                      <span class="filter-name">Fine Grain</span>
+                    </div>
+                    <div class="filter-card" data-filter="olden_days">
+                      <div class="filter-swatch swatch-olden"></div>
+                      <span class="filter-name">Olden Days</span>
+                    </div>
+                    <div class="filter-card" data-filter="future">
+                      <div class="filter-swatch swatch-future"></div>
+                      <span class="filter-name">Future</span>
+                    </div>
+                    <div class="filter-card" data-filter="noir">
+                      <div class="filter-swatch swatch-noir"></div>
+                      <span class="filter-name">Noir</span>
+                    </div>
+                    <div class="filter-card" data-filter="vintage">
+                      <div class="filter-swatch swatch-vintage"></div>
+                      <span class="filter-name">Vintage</span>
+                    </div>
+                    <div class="filter-card" data-filter="cyberpunk">
+                      <div class="filter-swatch swatch-cyberpunk"></div>
+                      <span class="filter-name">Cyberpunk</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Motion Effects (Zoom / Pan / Shake) -->
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Motion & Camera Effects</span>
+                    <small>Parametric Ken Burns camera motion</small>
+                  </div>
+                  <div class="motion-grid">
+                    <div class="motion-card selected" data-motion="none">
+                      <span class="motion-icon">🔒</span>
+                      <span class="motion-label">Static</span>
+                    </div>
+                    <div class="motion-card" data-motion="zoom_in">
+                      <span class="motion-icon">🔍</span>
+                      <span class="motion-label">Slow Zoom In</span>
+                    </div>
+                    <div class="motion-card" data-motion="zoom_out">
+                      <span class="motion-icon">🔎</span>
+                      <span class="motion-label">Slow Zoom Out</span>
+                    </div>
+                    <div class="motion-card" data-motion="line_zoom">
+                      <span class="motion-icon">⚡</span>
+                      <span class="motion-label">Line Zoom</span>
+                    </div>
+                    <div class="motion-card" data-motion="pan_left_right">
+                      <span class="motion-icon">↔️</span>
+                      <span class="motion-label">Pan Left-Right</span>
+                    </div>
+                    <div class="motion-card" data-motion="shake">
+                      <span class="motion-icon">📳</span>
+                      <span class="motion-label">Camera Shake</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Transitions -->
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Transitions</span>
+                    <small>Head & tail effects</small>
+                  </div>
+                  <select class="studio-select" id="transitionSelect">
+                    <option value="none">None (Standard Cut)</option>
+                    <option value="fade_in">Fade In from Black (1s)</option>
+                    <option value="fade_out">Fade Out to Black (1s)</option>
+                    <option value="fade_in_out">Fade In & Fade Out</option>
+                    <option value="flash_white">Impact Flash Dip to White</option>
+                  </select>
+                </div>
+
+                <!-- Custom Adjustment Sliders -->
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Fine-Tuning Adjustments</span>
+                    <small>Brightness & Contrast</small>
+                  </div>
+                  <div class="slider-group">
+                    <div class="slider-label"><span>Brightness</span><span id="brightnessVal">100%</span></div>
+                    <input type="range" class="studio-slider" id="brightnessSlider" min="50" max="150" value="100">
+                  </div>
+                  <div class="slider-group">
+                    <div class="slider-label"><span>Contrast</span><span id="contrastVal">100%</span></div>
+                    <input type="range" class="studio-slider" id="contrastSlider" min="50" max="180" value="100">
+                  </div>
+                  <div class="slider-group">
+                    <div class="slider-label"><span>Saturation</span><span id="saturationVal">100%</span></div>
+                    <input type="range" class="studio-slider" id="saturationSlider" min="0" max="200" value="100">
+                  </div>
+                </div>
+
+                <button type="button" class="btn-master-action" id="exportEditedBtn">
+                  ✨ Export Edited Video
+                </button>
               </div>
-              <div class="aspect-card" data-aspect="1:1">
-                <div class="aspect-icon-box shape-1-1"></div>
-                <div class="aspect-title">1:1 Square</div>
-                <div class="aspect-sub">Instagram / Twitter</div>
+
+              <!-- ================= 2. TOOL PANEL: BLUR BRUSH & MASK ================= -->
+              <div class="tool-panel" id="panel_blur_brush">
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Interactive Blur Brush</span>
+                    <small>Paint over logos, faces, or watermarks</small>
+                  </div>
+                  <p style="font-size: 12.5px; color: var(--text-muted); line-height: 1.4;">
+                    Click and drag directly on the video player stage to paint blur over confidential info. The masked blur persists during playback and exports!
+                  </p>
+                </div>
+
+                <div class="blur-toolbar">
+                  <div class="brush-preview-circle" id="brushPreviewCircle">35px</div>
+                  <div style="flex: 1;">
+                    <div class="slider-label"><span>Brush Size</span><span id="brushSizeVal">35px</span></div>
+                    <input type="range" class="studio-slider" id="brushSizeSlider" min="10" max="100" value="35">
+                  </div>
+                </div>
+
+                <div class="slider-group">
+                  <div class="slider-label"><span>Blur Intensity</span><span id="blurStrengthVal">20px</span></div>
+                  <input type="range" class="studio-slider" id="blurStrengthSlider" min="6" max="45" value="20">
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn btn-secondary btn-sm" id="clearBrushBtn" style="flex: 1;">
+                    🧹 Clear Blur Mask
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="boxBlurBtn" style="flex: 1;" title="Drag a rectangle over a corner logo">
+                    🔲 Box Blur Mode
+                  </button>
+                </div>
+
+                <div class="summary-box">
+                  💡 Tip: Use smaller brush size for sensitive text or larger for face / logo coverage.
+                </div>
+
+                <button type="button" class="btn-master-action" id="exportMaskedBtn">
+                  ✨ Export Video with Blur Mask
+                </button>
               </div>
-              <div class="aspect-card" data-aspect="16:9">
-                <div class="aspect-icon-box shape-16-9"></div>
-                <div class="aspect-title">16:9 Landscape</div>
-                <div class="aspect-sub">YouTube / TV</div>
+
+              <!-- ================= 3. TOOL PANEL: AUTO CUTTER ================= -->
+              <div class="tool-panel" id="panel_video_cutter">
+                
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Split Strategy</span>
+                    <small>Automatic slice calculation</small>
+                  </div>
+                  <div class="tab-switcher">
+                    <button type="button" class="tab-btn active" id="modeDurationBtn">⏱️ Fixed Duration</button>
+                    <button type="button" class="tab-btn" id="modePartsBtn">🔢 Equal Parts</button>
+                  </div>
+
+                  <div class="input-with-presets" id="durationControlGroup">
+                    <div class="duration-input-wrapper">
+                      <input type="number" id="durationInput" min="1" max="600" step="1" value="10">
+                      <span>seconds / clip</span>
+                    </div>
+                    <div class="preset-pills">
+                      <span class="preset-pill" data-val="5">5s</span>
+                      <span class="preset-pill active" data-val="10">10s</span>
+                      <span class="preset-pill" data-val="15">15s (Stories)</span>
+                      <span class="preset-pill" data-val="30">30s (Shorts)</span>
+                      <span class="preset-pill" data-val="60">60s (Reels)</span>
+                    </div>
+                  </div>
+
+                  <div class="input-with-presets" id="partsControlGroup" style="display: none;">
+                    <div class="duration-input-wrapper">
+                      <input type="number" id="partsInput" min="2" max="50" step="1" value="6">
+                      <span>equal clips</span>
+                    </div>
+                  </div>
+
+                  <div style="margin-top: 6px;">
+                    <label style="font-size: 11.5px; color: var(--text-muted); display: block; margin-bottom: 4px;">
+                      Remainder Segment Policy:
+                    </label>
+                    <select class="studio-select" id="remainderSelect">
+                      <option value="keep">Keep remainder as last clip</option>
+                      <option value="merge">Merge remainder with previous clip</option>
+                      <option value="discard">Discard remainder clip</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Orientation Switcher -->
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Social Media Orientation</span>
+                    <small>Target aspect ratio</small>
+                  </div>
+                  <div class="aspect-grid">
+                    <div class="aspect-card selected" data-aspect="9:16">
+                      <div class="aspect-icon-box shape-9-16"></div>
+                      <div class="aspect-title">9:16 Portrait</div>
+                      <div class="aspect-sub">Shorts/Reels/TikTok</div>
+                    </div>
+                    <div class="aspect-card" data-aspect="1:1">
+                      <div class="aspect-icon-box shape-1-1"></div>
+                      <div class="aspect-title">1:1 Square</div>
+                      <div class="aspect-sub">Instagram Post</div>
+                    </div>
+                    <div class="aspect-card" data-aspect="16:9">
+                      <div class="aspect-icon-box shape-16-9"></div>
+                      <div class="aspect-title">16:9 Landscape</div>
+                      <div class="aspect-sub">YouTube / TV</div>
+                    </div>
+                    <div class="aspect-card" data-aspect="4:5">
+                      <div class="aspect-icon-box shape-4-5"></div>
+                      <div class="aspect-title">4:5 Social Feed</div>
+                      <div class="aspect-sub">Instagram Feed</div>
+                    </div>
+                    <div class="aspect-card" data-aspect="original">
+                      <div class="aspect-icon-box shape-orig"></div>
+                      <div class="aspect-title">Original</div>
+                      <div class="aspect-sub">Source ratio</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Framing Style -->
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Framing Style</span>
+                    <small>Social background treatment</small>
+                  </div>
+                  <div class="framing-grid">
+                    <div class="framing-card selected" data-fit="blur" title="Scales video to background with gaussian blur. Keeps entire original video uncropped in center.">
+                      <span>🌟 Blurred Background</span>
+                    </div>
+                    <div class="framing-card" data-fit="crop" title="Scales up to cover the entire frame without any borders.">
+                      <span>✂️ Smart Center Crop</span>
+                    </div>
+                    <div class="framing-card" data-fit="fit" title="Preserves full frame with clean black letterbox padding.">
+                      <span>⬛ Letterbox</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="summary-box" id="summaryBox">
+                  ✂️ Will slice into <strong>6 videos</strong> (10s target)
+                </div>
+
+                <button type="button" class="btn-master-action" id="masterCutBtn">
+                  ✂️ Cut & Export 6 Videos
+                </button>
               </div>
-              <div class="aspect-card" data-aspect="4:5">
-                <div class="aspect-icon-box shape-4-5"></div>
-                <div class="aspect-title">4:5 Social Feed</div>
-                <div class="aspect-sub">Instagram Portrait</div>
+
+              <!-- ================= 4. TOOL PANEL: CROP, ROTATE & FLIP ================= -->
+              <div class="tool-panel" id="panel_crop_rotate">
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Rotate & Orientation</span>
+                    <small>Instant rotation flag</small>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary" id="rotate90Btn" style="flex: 1;">
+                      🔄 Rotate 90°
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="rotate180Btn" style="flex: 1;">
+                      🔃 Rotate 180°
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="resetRotateBtn" style="flex: 1;">
+                      ↩️ Reset
+                    </button>
+                  </div>
+                </div>
+
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Mirror & Flip</span>
+                    <small>Horizontal / Vertical invert</small>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn btn-secondary" id="flipHBtn" style="flex: 1;">
+                      ↔️ Flip Horizontal
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="flipVBtn" style="flex: 1;">
+                      ↕️ Flip Vertical
+                    </button>
+                  </div>
+                </div>
+
+                <button type="button" class="btn-master-action" id="exportTransformBtn">
+                  ✨ Export Transformed Video
+                </button>
               </div>
-              <div class="aspect-card" data-aspect="original">
-                <div class="aspect-icon-box shape-orig"></div>
-                <div class="aspect-title">Original</div>
-                <div class="aspect-sub">Keep source ratio</div>
+
+              <!-- ================= 5. TOOL PANEL: SPEED & VOLUME ================= -->
+              <div class="tool-panel" id="panel_speed_volume">
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Playback Speed</span>
+                    <small>Slow motion or fast-forward</small>
+                  </div>
+                  <div class="slider-group">
+                    <div class="slider-label"><span>Speed</span><span id="speedVal">1.0x</span></div>
+                    <input type="range" class="studio-slider" id="speedSlider" min="0.25" max="3.0" step="0.25" value="1.0">
+                  </div>
+                  <div class="preset-pills">
+                    <span class="preset-pill" data-speed="0.5">0.5x Slow</span>
+                    <span class="preset-pill active" data-speed="1.0">1.0x Normal</span>
+                    <span class="preset-pill" data-speed="1.5">1.5x</span>
+                    <span class="preset-pill" data-speed="2.0">2.0x Fast</span>
+                  </div>
+                </div>
+
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Audio Volume</span>
+                    <small>Boost, attenuate or mute</small>
+                  </div>
+                  <div class="slider-group">
+                    <div class="slider-label"><span>Volume Level</span><span id="volumeVal">100%</span></div>
+                    <input type="range" class="studio-slider" id="volumeSlider" min="0" max="250" value="100">
+                  </div>
+                  <div style="margin-top: 6px;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="muteToggleBtn">
+                      🔇 Mute Audio
+                    </button>
+                  </div>
+                </div>
+
+                <button type="button" class="btn-master-action" id="exportSpeedVolumeBtn">
+                  ✨ Export with Speed & Volume
+                </button>
               </div>
+
+              <!-- ================= 6. TOOL PANEL: SCREEN & RECORDER ================= -->
+              <div class="tool-panel" id="panel_screen_recorder">
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>In-Browser Video Capture</span>
+                    <small>Direct capture into Omni Studio</small>
+                  </div>
+                  <p style="font-size: 12.5px; color: var(--text-muted); line-height: 1.4;">
+                    Record your display screen or webcam directly in your browser. Once recorded, it loads automatically for editing, filtering, or slicing!
+                  </p>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <button type="button" class="btn btn-primary" id="startScreenRecBtn">
+                    🖥️ Record Screen (Display Capture)
+                  </button>
+                  <button type="button" class="btn btn-secondary" id="startCamRecBtn">
+                    📷 Record Camera (Webcam)
+                  </button>
+                </div>
+
+                <div id="recorderLiveIndicator" style="display: none; align-items: center; gap: 8px; color: var(--danger); font-size: 13px; font-weight: 600;">
+                  <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: pulse 1s infinite;"></span>
+                  <span>Recording in progress...</span>
+                  <button type="button" class="btn btn-secondary btn-sm" id="stopRecordingBtn" style="margin-left: auto;">
+                    ⏹️ Stop & Load
+                  </button>
+                </div>
+              </div>
+
             </div>
           </div>
 
-          <!-- 3. Framing & Background Style -->
-          <div class="control-section">
-            <div class="section-label">
-              <span>3. Framing Style</span>
-              <small>How to fit video into target orientation</small>
+          <!-- Processing Progress Card -->
+          <section class="processing-card" id="processingCard">
+            <div class="processing-header">
+              <div class="processing-status-title">
+                <span>⏳</span>
+                <span id="processingStatus">Processing video with Omni Studio...</span>
+              </div>
+              <span style="font-weight: 700; color: #a5b4fc;" id="progressPercent">0%</span>
             </div>
-            <div class="framing-grid">
-              <div class="framing-card selected" data-fit="blur" title="Scales video to background with gaussian blur. Keeps entire original video uncropped in center.">
-                <span class="framing-icon">🌟</span>
-                <span>Blurred Background</span>
-              </div>
-              <div class="framing-card" data-fit="crop" title="Scales up to cover the entire frame without any borders.">
-                <span class="framing-icon">✂️</span>
-                <span>Smart Crop</span>
-              </div>
-              <div class="framing-card" data-fit="fit" title="Preserves full frame with clean black letterbox padding.">
-                <span class="framing-icon">⬛</span>
-                <span>Letterbox</span>
-              </div>
+
+            <div class="progress-track">
+              <div class="progress-fill" id="progressFill"></div>
             </div>
+
+            <div class="processing-details" id="processingDetails">
+              <span>Encoding frames...</span>
+              <button type="button" class="btn btn-secondary btn-sm" id="cancelBtn">Stop Export</button>
+            </div>
+          </section>
+
+          <!-- Results Gallery & Download -->
+          <section class="results-section" id="resultsSection">
+            <div class="results-header">
+              <h2 class="results-title" id="resultsCount">🎉 Exported Videos</h2>
+              <button type="button" class="btn btn-primary" id="downloadAllZipBtn" style="display: none;">
+                📦 Download All as ZIP
+              </button>
+            </div>
+
+            <div class="results-grid" id="resultsGrid">
+              <!-- Populated dynamically -->
+            </div>
+          </section>
+
+        </main>
+
+        <!-- Informational Guide Cards -->
+        <section class="info-guide">
+          <div class="guide-card">
+            <h3>⚡ 100% Client-Side Engine</h3>
+            <p>Processes videos directly via HTML5 Canvas 2D and MediaStream. No video frames ever leave your device, ensuring maximum processing speed and absolute privacy.</p>
           </div>
 
-          <!-- 4. Quality Resolution -->
-          <div class="control-section">
-            <div class="section-label">
-              <span>4. Export Quality</span>
-              <small>Resolution</small>
-            </div>
-            <select class="studio-select" id="resolutionSelect">
-              <option value="1080p">1080p Full HD (Best quality for TikTok & Reels)</option>
-              <option value="720p">720p HD (Blazing fast processing)</option>
-            </select>
+          <div class="guide-card">
+            <h3>🎨 Aesthetic Filters & Motion</h3>
+            <p>One-click <strong>Grayscale</strong>, <strong>Fine Grain</strong>, <strong>Olden Days</strong>, <strong>Future Neon</strong>, and <strong>Film Noir</strong> presets with smooth Ken Burns zoom and transitions.</p>
           </div>
 
-          <!-- Summary & Master Cut Button -->
-          <div class="summary-box" id="summaryBox">
-            ✂️ Will slice into <strong>6 videos</strong> (10s target)
+          <div class="guide-card">
+            <h3>🖌️ Selective Blur Brush</h3>
+            <p>Paint blur directly over private information, faces, or logos with zero heavy computer vision models or GPU lag.</p>
           </div>
+        </section>
 
-          <button type="button" class="btn-cut-master" id="masterCutBtn">
-            ✂️ Cut & Export 6 Videos
-          </button>
-
-        </div>
       </div>
-
-      <!-- Processing Progress Card -->
-      <section class="processing-card" id="processingCard">
-        <div class="processing-header">
-          <div class="processing-status-title">
-            <span class="spinner">⏳</span>
-            <span id="processingStatus">Processing segments...</span>
-          </div>
-          <span style="font-weight: 700; color: #a5b4fc;" id="progressPercent">0%</span>
-        </div>
-
-        <div class="progress-track">
-          <div class="progress-fill" id="progressFill"></div>
-        </div>
-
-        <div class="processing-details" id="processingDetails">
-          <span>Preparing encoder...</span>
-          <button type="button" class="btn btn-secondary btn-sm" id="cancelBtn">Stop Export</button>
-        </div>
-      </section>
-
-      <!-- Results Gallery & Download -->
-      <section class="results-section" id="resultsSection">
-        <div class="results-header">
-          <h2 class="results-title" id="resultsCount">🎉 Sliced Segments</h2>
-          <button type="button" class="btn btn-primary" id="downloadAllZipBtn">
-            📦 Download All as ZIP
-          </button>
-        </div>
-
-        <div class="results-grid" id="resultsGrid">
-          <!-- Populated dynamically -->
-        </div>
-      </section>
-
-    </main>
-
-    <!-- Information & Guide Section -->
-    <section class="info-guide">
-      <div class="guide-card">
-        <h3>⚡ 100% Client-Side Processing</h3>
-        <p>Your video is processed completely in your browser using HTML5 Canvas and Media Streams. No files are ever uploaded to any server or cloud, ensuring maximum speed, zero data transfer limits, and 100% privacy.</p>
-      </div>
-
-      <div class="guide-card">
-        <h3>📱 Social Media Ready</h3>
-        <p>Instantly repurpose long YouTube or podcast videos into <strong>9:16 vertical clips</strong> for TikTok, Instagram Reels, and YouTube Shorts with popular <strong>Blurred Background</strong> padding or smart crop.</p>
-      </div>
-
-      <div class="guide-card">
-        <h3>🌐 1-Click GitHub Pages Hosting</h3>
-        <p>Deploy this tool on your own public GitHub repo in under 60 seconds with zero configuration. Works immediately on <code>https://everlovingvijay.github.io/video-cutter/</code>.</p>
-      </div>
-    </section>
-
-    <footer>
-      <p>VidCut Studio &bull; Built with ❤️ for <a href="https://github.com/everlovingvijay" target="_blank" rel="noopener noreferrer">@everlovingvijay</a> &bull; Open Source</p>
-    </footer>
-
+    </div>
   </div>
 
   <script src="./js/video-engine.js"></script>
