@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VidCut Omni - Test Runner & Sample Generator</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0a0d14;
+      color: #f8fafc;
+      padding: 24px;
+      line-height: 1.5;
+    }
+    h1, h2 { color: #a5b4fc; }
+    .test-box {
+      background: #101623;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .pass { color: #10b981; font-weight: bold; }
+    .fail { color: #ef4444; font-weight: bold; }
+    .btn {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    .btn:hover { background: #4f46e5; }
+    #log {
+      background: #000;
+      font-family: monospace;
+      padding: 12px;
+      border-radius: 6px;
+      height: 250px;
+      overflow-y: auto;
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+  </style>
+  <script src="../js/edit-graph.js"></script>
+  <script src="../js/watermark-engine.js"></script>
+  <script src="../js/video-engine.js"></script>
+</head>
+<body>
+  <h1>🧪 VidCut Omni QA Suite & Baseline Generator</h1>
+  <p>In-browser automated unit test verification and baseline test clip generator.</p>
+
+  <div class="test-box">
+    <h2>1. Unit Test Suite</h2>
+    <button class="btn" onclick="runUnitTests()">▶️ Run Browser Unit Tests</button>
+    <div id="unitResults" style="margin-top: 12px;"></div>
+  </div>
+
+  <div class="test-box">
+    <h2>2. Baseline Media Samples Generator</h2>
+    <p>Generate baseline test clips per Blueprint Section 2:</p>
+    <button class="btn" onclick="generateClip('5s_tone')">Generate 5s 720p Tone</button>
+    <button class="btn" onclick="generateClip('silent')">Generate Silent Clip</button>
+    <button class="btn" onclick="generateClip('portrait')">Generate Portrait 9:16</button>
+    <button class="btn" onclick="generateClip('10s_clock')">Generate 10s Clock</button>
+    <div id="sampleOutput" style="margin-top: 12px;"></div>
+  </div>
+
+  <div class="test-box">
+    <h2>Execution Log</h2>
+    <div id="log">Ready to run tests...</div>
+  </div>
+
+  <script>
+    function log(msg) {
+      const el = document.getElementById('log');
+      el.textContent += '\n' + msg;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function runUnitTests() {
+      const resultsEl = document.getElementById('unitResults');
+      resultsEl.innerHTML = '';
+      log('--- Running VideoEngine Unit Tests ---');
+      const engine = new VideoEngine();
+      let passed = 0;
+      let total = 0;
+
+      function assert(desc, condition) {
+        total++;
+        if (condition) {
+          passed++;
+          log('✅ PASS: ' + desc);
+        } else {
+          log('❌ FAIL: ' + desc);
+        }
+      }
+
+      // Test 1: Slicing 60s into 10s
+      const segs = engine.calculateSegments(60, 10, 'duration', 6, 'keep');
+      assert('Calculate 60s / 10s produces 6 segments', segs.length === 6);
+      assert('First segment starts at 0s and ends at 10s', segs[0].start === 0 && segs[0].end === 10);
+      assert('Last segment ends at 60s', segs[5].end === 60);
+
+      // Test 2: Remainder merge
+      const segsMerged = engine.calculateSegments(65, 10, 'duration', 6, 'merge');
+      assert('Remainder merge produces 6 segments', segsMerged.length === 6);
+      assert('Last segment duration is 15s', Math.abs(segsMerged[5].duration - 15) < 0.01);
+
+      // Test 3: Remainder discard
+      const segsDiscard = engine.calculateSegments(65, 10, 'duration', 6, 'discard');
+      assert('Remainder discard produces 6 segments', segsDiscard.length === 6);
+      assert('Last segment ends at 60s', segsDiscard[5].end === 60);
+
+      // Test 4: Target dimensions
+      const dim916 = engine.getTargetDimensions('9:16', '1080p');
+      assert('9:16 1080p width is 1080 and height is 1920', dim916.width === 1080 && dim916.height === 1920);
+      const dim11 = engine.getTargetDimensions('1:1', '720p');
+      assert('1:1 720p is 720x720', dim11.width === 720 && dim11.height === 720);
+
+      // Test 5: Filter strings
+      assert('Grayscale preset generates grayscale(100%)', engine.buildFilterString('grayscale').includes('grayscale(100%)'));
+      assert('Noir preset generates contrast and brightness', engine.buildFilterString('noir').includes('contrast(165%)'));
+
+      // Test 6: EditGraph Schema v1.0 & Validation
+      log('--- Running EditGraph Unit Tests ---');
+      const graph = new EditGraph({
+        source: { name: 'test_clip.mp4', duration: 60.0, width: 1920, height: 1080 },
+        timeline: { inPoint: 0, outPoint: 60.0, splitDuration: 10, remainderPolicy: 'keep' },
+        effects: { orientation: '9:16', filterPreset: 'future' }
+      });
+      assert('EditGraph initializes with version 1.0', graph.version === '1.0');
+      assert('EditGraph validation succeeds for valid parameters', graph.validate().valid === true);
+
+      // Test 7: EditGraph JSON Roundtrip
+      const jsonStr = graph.toJSON();
+      const parsedGraph = EditGraph.fromJSON(jsonStr);
+      assert('EditGraph JSON roundtrip preserves orientation', parsedGraph.effects.orientation === '9:16');
+      assert('EditGraph JSON roundtrip preserves filterPreset', parsedGraph.effects.filterPreset === 'future');
+      assert('EditGraph JSON roundtrip preserves splitDuration', parsedGraph.timeline.splitDuration === 10);
+
+      // Test 8: EditGraph getSegments
+      const gSegs = graph.getSegments();
+      assert('EditGraph getSegments produces 6 segments for 60s/10s', gSegs.length === 6);
+      assert('EditGraph first segment is [0, 10]', gSegs[0].start === 0 && gSegs[0].end === 10);
+
+      // Test 9: EditGraph toPipelineConfig
+      const pipeConfig = graph.toPipelineConfig();
+      assert('toPipelineConfig produces orientation 9:16', pipeConfig.orientation === '9:16');
+      assert('toPipelineConfig produces filterPreset future', pipeConfig.filterPreset === 'future');
+      assert('toPipelineConfig includes resolution 1080p', pipeConfig.resolution === '1080p');
+
+      // Test 10: VideoEngine exportPipeline API availability
+      assert('VideoEngine has exportPipeline method', typeof engine.exportPipeline === 'function');
+
+      // Test 11: WatermarkEngine CRC-16 & Payload Integrity
+      log('--- Running WatermarkEngine Unit Tests ---');
+      const testBytes = new Uint8Array([0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39]); // "123456789"
+      const crc = computeCRC16(testBytes, testBytes.length);
+      assert('CRC16-CCITT matches standard 0x29B1', crc === 0x29B1);
+
+      const packed = packPayload64(1, 987654, 0);
+      assert('Packed payload length is 8 bytes (64 bits)', packed.length === 8);
+      const unpacked = unpackPayload64(packed);
+      assert('Unpacked payload matches original ID 987654', unpacked.watermarkId === 987654);
+      assert('Unpacked payload CRC integrity is valid', unpacked.isValid === true);
+
+      // Test 12: Watermark Tamper Detection
+      const tampered = new Uint8Array(packed);
+      tampered[3] ^= 0x01; // flip single bit
+      const unpackedTampered = unpackPayload64(tampered);
+      assert('Tampered payload fails CRC integrity check', unpackedTampered.isValid === false);
+
+      // Test 13: Watermark Spatial Embedding Simulation
+      const testCanvas = document.createElement('canvas');
+      testCanvas.width = 160;
+      testCanvas.height = 120;
+      const tCtx = testCanvas.getContext('2d');
+      tCtx.fillStyle = '#808080';
+      tCtx.fillRect(0, 0, 160, 120);
+
+      const wmKey = 'test_key_qa_123';
+      const wmTargetId = 554433;
+      WatermarkEngine.embedFrame(tCtx, 160, 120, {
+        enabled: true,
+        key: wmKey,
+        id: wmTargetId,
+        strength: 3,
+        samplesPerBit: 32
+      });
+
+      const likelihoods = WatermarkEngine.extractFrameLikelihoods(tCtx, 160, 120, wmKey, 32);
+      const decBits = new Uint8Array(64);
+      for (let b = 0; b < 64; b++) decBits[b] = likelihoods[b] > 0 ? 1 : 0;
+      const decPayload = unpackPayload64(bitsToBytes(decBits));
+      assert('Extracted spatial watermark matches ID and passes CRC', decPayload.isValid && decPayload.watermarkId === wmTargetId);
+
+      // Test 14: Negative Control with Wrong Key
+      const wrongLikelihoods = WatermarkEngine.extractFrameLikelihoods(tCtx, 160, 120, 'wrong_key_xyz', 32);
+      const wrongBits = new Uint8Array(64);
+      for (let b = 0; b < 64; b++) wrongBits[b] = wrongLikelihoods[b] > 0 ? 1 : 0;
+      const wrongPayload = unpackPayload64(bitsToBytes(wrongBits));
+      assert('Negative control: Wrong key fails CRC check', !wrongPayload.isValid);
+
+      // Test 15: Spatial Grid Exact Integer Partitioning (Phase 4)
+      log('--- Running Spatial Grid Unit Tests ---');
+      const grid3x3 = engine.calculateSpatialGrid(1080, 1920, 3, 3);
+      assert('Spatial grid 3x3 produces exactly 9 tiles', grid3x3.length === 9);
+      let totalArea = 0;
+      for (let i = 0; i < grid3x3.length; i++) totalArea += grid3x3[i].width * grid3x3[i].height;
+      assert('Spatial grid partitions 1080x1920 with zero pixel gap or overlap', totalArea === 1080 * 1920);
+
+      // Test 16: Block-DCT Watermarking Simulation (Phase 3)
+      log('--- Running Block-DCT Watermark Unit Tests ---');
+      const dctCanvas = document.createElement('canvas');
+      dctCanvas.width = 160;
+      dctCanvas.height = 120;
+      const dCtx = dctCanvas.getContext('2d');
+      dCtx.fillStyle = '#64748b';
+      dCtx.fillRect(0, 0, 160, 120);
+
+      const dctKey = 'dct_secret_key_2026';
+      const dctTargetId = 778899;
+      WatermarkEngine.embedFrame(dCtx, 160, 120, {
+        enabled: true,
+        algorithm: 'dct',
+        key: dctKey,
+        id: dctTargetId,
+        strength: 3
+      });
+
+      const dctLikelihoods = WatermarkEngine.extractFrameLikelihoodsDCT(dCtx, 160, 120, dctKey);
+      assert('DCT likelihoods length is 112 coded bits (16 Hamming blocks)', dctLikelihoods.length === 112);
+
+      // Test 17: VideoEngine Spatial Grid & Rejoiner API availability
+      assert('VideoEngine has calculateSpatialGrid method', typeof engine.calculateSpatialGrid === 'function');
+      assert('VideoEngine has processSpatialGrid method', typeof engine.processSpatialGrid === 'function');
+      assert('VideoEngine has rejoinVideos method', typeof engine.rejoinVideos === 'function');
+
+      resultsEl.innerHTML = `<span class="${passed === total ? 'pass' : 'fail'}">${passed} / ${total} tests passed.</span>`;
+    }
+
+    async function generateClip(type) {
+      log('Generating clip: ' + type + '...');
+      const engine = new VideoEngine();
+      let dur = 5;
+      if (type === '10s_clock') dur = 10;
+      const res = await engine.generateSampleVideo(dur);
+      log('Clip generated! Size: ' + (res.blob.size / 1024).toFixed(1) + ' KB, MIME: ' + res.mime);
+
+      const url = URL.createObjectURL(res.blob);
+      const outputDiv = document.getElementById('sampleOutput');
+      outputDiv.innerHTML = `
+        <video src="${url}" controls style="max-height: 200px; display: block; margin-top: 8px;"></video>
+        <a class="btn" style="display: inline-block; margin-top: 8px;" href="${url}" download="sample_${type}.${res.ext}">
+          ⬇️ Download sample_${type}.${res.ext}
+        </a>
+      `;
+    }
+  </script>
+</body>
+</html>

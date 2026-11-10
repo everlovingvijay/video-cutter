@@ -38,6 +38,11 @@
           <span>Auto Cutter & Slicer</span>
         </button>
 
+        <button class="sidebar-item" data-tool="merge_videos">
+          <span class="item-icon">🔗</span>
+          <span>Merge Videos</span>
+        </button>
+
         <button class="sidebar-item" data-tool="crop_rotate">
           <span class="item-icon">📐</span>
           <span>Crop, Rotate & Flip</span>
@@ -46,6 +51,11 @@
         <button class="sidebar-item" data-tool="speed_volume">
           <span class="item-icon">⚡</span>
           <span>Speed & Volume</span>
+        </button>
+
+        <button class="sidebar-item" data-tool="watermark_studio">
+          <span class="item-icon">🛡️</span>
+          <span>Watermark Studio</span>
         </button>
 
         <button class="sidebar-item" data-tool="screen_recorder">
@@ -116,6 +126,11 @@
               <div class="stat-item">📐 Resolution: <span class="stat-value" id="infoResolution">-</span></div>
               <div class="stat-item">🔄 Aspect: <span class="stat-value" id="infoAspect">-</span></div>
               <div class="stat-item">💾 Size: <span class="stat-value" id="infoFileSize">-</span></div>
+            </div>
+            <div class="video-info-actions" style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-secondary btn-sm" id="saveProjectBtn" title="Save non-destructive edit graph as JSON">💾 Save Project</button>
+              <button type="button" class="btn btn-secondary btn-sm" id="loadProjectBtn" title="Load non-destructive edit graph from JSON">📂 Load Project</button>
+              <input type="file" id="projectFileInput" accept=".json,application/json" style="display: none;">
             </div>
           </div>
 
@@ -346,6 +361,7 @@
                   <div class="tab-switcher">
                     <button type="button" class="tab-btn active" id="modeDurationBtn">⏱️ Fixed Duration</button>
                     <button type="button" class="tab-btn" id="modePartsBtn">🔢 Equal Parts</button>
+                    <button type="button" class="tab-btn" id="modeSpatialGridBtn">🔲 Spatial Grid</button>
                   </div>
 
                   <div class="input-with-presets" id="durationControlGroup">
@@ -367,6 +383,24 @@
                       <input type="number" id="partsInput" min="2" max="50" step="1" value="6">
                       <span>equal clips</span>
                     </div>
+                  </div>
+
+                  <div id="spatialGridControlGroup" style="display: none; margin-top: 8px;">
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                      <button type="button" class="btn btn-secondary btn-sm active grid-preset-btn" data-rows="3" data-cols="3">3×3 (9 Tiles)</button>
+                      <button type="button" class="btn btn-secondary btn-sm grid-preset-btn" data-rows="2" data-cols="2">2×2 (4 Tiles)</button>
+                      <button type="button" class="btn btn-secondary btn-sm grid-preset-btn" data-rows="4" data-cols="4">4×4 (16 Tiles)</button>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                      <label style="font-size: 12px; color: var(--text-muted);">Rows: <input type="number" id="gridRowsInput" min="1" max="8" value="3" style="width: 45px; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: var(--text-main);"></label>
+                      <label style="font-size: 12px; color: var(--text-muted);">Cols: <input type="number" id="gridColsInput" min="1" max="8" value="3" style="width: 45px; padding: 4px; border-radius: 4px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); color: var(--text-main);"></label>
+                    </div>
+                    <div id="gridTileInfo" style="font-size: 11.5px; padding: 8px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); color: var(--text-muted); line-height: 1.4;">
+                      📐 Integer Partition: <strong>3×3 Grid</strong> (Zero overlap, zero pixel gaps).
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="exportGridTilesBtn" style="width: 100%; margin-top: 10px;">
+                      🔲 Slices Frames into 9 Spatial Tiles
+                    </button>
                   </div>
 
                   <div style="margin-top: 6px;">
@@ -442,6 +476,36 @@
                 <button type="button" class="btn-master-action" id="masterCutBtn">
                   ✂️ Cut & Export 6 Videos
                 </button>
+              </div>
+
+              <!-- ================= 3b. TOOL PANEL: MERGE & REJOIN VIDEOS ================= -->
+              <div class="tool-panel" id="panel_merge_videos">
+                <div class="control-section">
+                  <div class="section-label">
+                    <span>Merge Multiple Videos</span>
+                    <small>Client-side sequence concatenation</small>
+                  </div>
+                  <p style="font-size: 12.5px; color: var(--text-muted); line-height: 1.4; margin-bottom: 12px;">
+                    Select multiple video clips or sliced grid tiles to join them seamlessly into a single continuous video.
+                  </p>
+
+                  <div id="mergeDropzone" style="border: 2px dashed var(--border-color); border-radius: 8px; padding: 18px; text-align: center; cursor: pointer; background: rgba(0,0,0,0.2);">
+                    <div style="font-size: 26px; margin-bottom: 6px;">📂</div>
+                    <div style="font-size: 13.5px; font-weight: 600; color: var(--text-main);">Choose or drop multiple clips to merge</div>
+                    <div style="font-size: 11.5px; color: var(--text-dim); margin-top: 4px;">Supports MP4, WebM, MOV</div>
+                    <input type="file" id="mergeFileInput" accept="video/*" multiple style="display: none;">
+                  </div>
+                </div>
+
+                <div id="mergeClipsList" style="margin-top: 12px; display: flex; flex-direction: column; gap: 6px;">
+                  <!-- Dynamically populated list of selected clips -->
+                </div>
+
+                <div style="margin-top: 18px;">
+                  <button type="button" class="btn btn-primary" id="startMergeBtn" style="width: 100%; display: none;">
+                    🔗 Concatenate & Export Merged Video
+                  </button>
+                </div>
               </div>
 
               <!-- ================= 4. TOOL PANEL: CROP, ROTATE & FLIP ================= -->
@@ -554,6 +618,174 @@
                 </div>
               </div>
 
+              <!-- ================= 7. TOOL PANEL: WATERMARK STUDIO & VERIFIER ================= -->
+              <div class="tool-panel" id="panel_watermark_studio">
+                
+                <!-- Watermark Subtabs -->
+                <div class="wm-tabs-bar" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                  <button type="button" class="btn btn-secondary btn-sm active" id="wmSubtabEmbed" style="flex: 1;">🛡️ Embed</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="wmSubtabVerify" style="flex: 1;">🔍 Verify</button>
+                  <button type="button" class="btn btn-secondary btn-sm" id="wmSubtabDiff" style="flex: 1;">🔬 Diff</button>
+                </div>
+
+                <!-- SUBSECTION A: EMBED WATERMARK -->
+                <div id="wmSectionEmbed">
+                  <div class="control-section">
+                    <div class="section-label">
+                      <span>Imperceptible Keyed Watermark</span>
+                      <small>Invisible steganographic frame modulation</small>
+                    </div>
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 6px;">
+                      <input type="checkbox" id="wmEnableCheckbox" style="accent-color: var(--accent-primary); width: 18px; height: 18px;">
+                      <div>
+                        <strong style="color: var(--text-main); font-size: 13.5px;">Enable Watermark Embedding</strong>
+                        <p style="font-size: 11.5px; color: var(--text-dim); margin-top: 2px;">Embeds a keyed statistical luminance perturbation across exported video frames.</p>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div class="control-section">
+                    <div class="section-label">
+                      <span>Secret Embedding Key</span>
+                      <small>Required by detector to verify watermark</small>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                      <input type="text" id="wmSecretKeyInput" style="flex: 1; padding: 8px 12px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-main); font-family: monospace; font-size: 13px;" value="vidcut-omni-key-2026" placeholder="Enter secret key...">
+                      <button type="button" class="btn btn-secondary btn-sm" id="wmRandomKeyBtn" title="Generate random secure key">🎲 Random</button>
+                    </div>
+                  </div>
+
+                  <div class="control-section">
+                    <div class="section-label">
+                      <span>Watermark Payload ID</span>
+                      <small>Numeric identity (0 to 4,294,967,295)</small>
+                    </div>
+                    <input type="number" id="wmPayloadIdInput" style="width: 100%; padding: 8px 12px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-main); font-size: 13px;" value="12345" min="1" max="4294967295">
+                  </div>
+
+                  <div class="control-section">
+                    <div class="section-label">
+                      <span>Embedding Strength: <span id="wmStrengthVal">2</span></span>
+                      <small>Luminance perturbation Δ (1 = invisible, 4 = robust)</small>
+                    </div>
+                    <input type="range" class="custom-slider" id="wmStrengthSlider" min="1" max="5" value="2" step="1">
+                  </div>
+
+                  <div class="control-section">
+                    <div class="section-label">
+                      <span>Watermark Algorithm</span>
+                      <small>Spatial MVP vs Robust Frequency-Domain DCT</small>
+                    </div>
+                    <select id="wmAlgorithmSelect" style="width: 100%; padding: 8px 12px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-main); font-size: 13px;">
+                      <option value="dct" selected>8x8 Block-DCT Mid-Frequency QIM (Robust ECC)</option>
+                      <option value="spatial">Spatial Luminance Modulation (Fast MVP)</option>
+                    </select>
+                  </div>
+
+                  <!-- Security Notice Callout -->
+                  <div class="wm-callout" style="background: rgba(99, 102, 241, 0.07); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 8px; padding: 12px; margin-top: 14px; font-size: 12px; line-height: 1.45; color: var(--text-muted);">
+                    <div style="color: #a5b4fc; font-weight: 600; margin-bottom: 4px;">🔐 Security & Verification Notice</div>
+                    <div>• <strong>Key Confidentiality:</strong> Only holders of this secret key can detect and extract the watermark payload.</div>
+                    <div style="margin-top: 4px;">• <strong>Robustness Boundaries:</strong> Watermarks survive native export and moderate trimming, but heavy lossy transcode or aggressive recompression may reduce confidence.</div>
+                  </div>
+
+                  <div style="margin-top: 18px;">
+                    <button type="button" class="btn btn-primary" id="exportWatermarkedBtn" style="width: 100%;">
+                      🛡️ Export Watermarked Video
+                    </button>
+                  </div>
+                </div>
+
+                <!-- SUBSECTION B: INDEPENDENT DETECTOR / VERIFIER -->
+                <div id="wmSectionVerify" style="display: none;">
+                  <div class="control-section">
+                    <div class="section-label">
+                      <span>Independent Video Verification</span>
+                      <small>Verifies freshly exported or third-party videos</small>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
+                      Select any video file to decode frames directly in your browser, reverse keyed pseudo-random samples, and compute false-positive controlled verification metrics.
+                    </p>
+                    
+                    <div id="detectorDropzone" style="border: 2px dashed var(--border-color); border-radius: 8px; padding: 16px; text-align: center; cursor: pointer; background: rgba(0,0,0,0.2);">
+                      <div style="font-size: 24px; margin-bottom: 6px;">📂</div>
+                      <div style="font-size: 13px; font-weight: 600; color: var(--text-main);" id="detectorFileLabel">Choose or drag exported video file...</div>
+                      <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Supports MP4, WebM, MOV</div>
+                      <input type="file" id="detectorFileInput" accept="video/*" style="display: none;">
+                    </div>
+                  </div>
+
+                  <div class="control-section">
+                    <div class="section-label">
+                      <span>Verification Secret Key</span>
+                      <small>Key used during watermark embedding</small>
+                    </div>
+                    <input type="text" id="detectorSecretKeyInput" style="width: 100%; padding: 8px 12px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-main); font-family: monospace; font-size: 13px;" value="vidcut-omni-key-2026">
+                  </div>
+
+                  <div style="margin-top: 14px;">
+                    <button type="button" class="btn btn-gold" id="runDetectorBtn" style="width: 100%;">
+                      🔍 Run Independent Verification
+                    </button>
+                  </div>
+
+                  <!-- Detector Results Readout -->
+                  <div id="detectorResultCard" style="display: none; margin-top: 16px; padding: 14px; border-radius: 8px; background: #0f172a; border: 1px solid rgba(255,255,255,0.12);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                      <span style="font-size: 12px; font-weight: 600; text-transform: uppercase; color: var(--text-muted);">Verification Status</span>
+                      <span id="detectorStatusBadge" class="badge" style="font-size: 12px; padding: 4px 10px;">Analyzing...</span>
+                    </div>
+
+                    <div style="margin-bottom: 8px;">
+                      <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                        <span>Detection Confidence:</span>
+                        <strong id="detectorConfidenceVal">0%</strong>
+                      </div>
+                      <div style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                        <div id="detectorConfidenceBar" style="height: 100%; width: 0%; background: #10b981; transition: width 0.4s ease;"></div>
+                      </div>
+                    </div>
+
+                    <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+                      <div>• Payload ID: <strong id="detectorWatermarkId" style="color: var(--text-main);">-</strong></div>
+                      <div>• Statistical Z-Score: <strong id="detectorZScore" style="color: var(--text-main);">-</strong></div>
+                      <div>• CRC-16 Integrity: <strong id="detectorCrcStatus" style="color: var(--text-main);">-</strong></div>
+                      <div>• Frames Analyzed: <strong id="detectorFramesAnalyzed" style="color: var(--text-main);">-</strong></div>
+                    </div>
+
+                    <div id="detectorMessage" style="margin-top: 10px; font-size: 11.5px; padding: 8px; border-radius: 4px; background: rgba(255,255,255,0.04); color: var(--text-dim); line-height: 1.4;">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- SUBSECTION C: VISUAL DIFFERENCE INSPECTOR -->
+                <div id="wmSectionDiff" style="display: none;">
+                  <div class="control-section">
+                    <div class="section-label">
+                      <span>Visual Difference Inspector</span>
+                      <small>Compare unwatermarked vs. watermarked frame</small>
+                    </div>
+                    <p style="font-size: 12px; color: var(--text-muted); line-height: 1.4; margin-bottom: 12px;">
+                      Watermarking is imperceptible to the naked eye. Below, the difference signal is amplified <strong>30×</strong> to reveal the keyed pseudo-random pixel modulation pattern.
+                    </p>
+
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                      <button type="button" class="btn btn-secondary btn-sm active" id="diffViewOriginalBtn">Original Frame</button>
+                      <button type="button" class="btn btn-secondary btn-sm" id="diffViewWatermarkedBtn">Watermarked</button>
+                      <button type="button" class="btn btn-secondary btn-sm" id="diffViewAmplifiedBtn">Amplified Diff (30×)</button>
+                    </div>
+
+                    <div style="background: #000; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; display: flex; justify-content: center; align-items: center; min-height: 180px;">
+                      <canvas id="wmDiffCanvas" style="max-width: 100%; height: auto; display: block;"></canvas>
+                    </div>
+                    <div id="diffViewCaption" style="text-align: center; font-size: 11.5px; color: var(--text-dim); margin-top: 6px;">
+                      Showing: Original Frame
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           </div>
 
@@ -615,6 +847,8 @@
     </div>
   </div>
 
+  <script src="./js/edit-graph.js"></script>
+  <script src="./js/watermark-engine.js"></script>
   <script src="./js/video-engine.js"></script>
   <script src="./js/app.js"></script>
 </body>

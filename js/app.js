@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const engine = new VideoEngine();
 
   // App & Video State
+  let currentEditGraph = new EditGraph();
   let currentFile = null;
   let videoDuration = 0;
   let videoWidth = 0;
@@ -59,7 +60,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Audio & Speed
     playbackSpeed: 1.0,
     volumeMultiplier: 1.0,
-    isMuted: false
+    isMuted: false,
+
+    // Watermark Studio
+    watermark: {
+      enabled: false,
+      algorithm: 'dct',
+      key: 'vidcut-omni-key-2026',
+      id: 12345,
+      strength: 2,
+      samplesPerBit: 48
+    }
   };
 
   // Mask Canvas for Blur Brush
@@ -198,6 +209,10 @@ document.addEventListener('DOMContentLoaded', () => {
       title: 'Auto Cutter & Orientation Slicer',
       sub: 'Divide longer videos into shorter clips with 9:16 vertical conversion'
     },
+    merge_videos: {
+      title: 'Merge & Rejoin Videos',
+      sub: 'Concatenate multiple video files or spatial grid tiles into a single video'
+    },
     crop_rotate: {
       title: 'Crop, Rotate & Flip Studio',
       sub: 'Rotate video 90°/180°, flip horizontally, or change framing'
@@ -205,6 +220,10 @@ document.addEventListener('DOMContentLoaded', () => {
     speed_volume: {
       title: 'Speed & Audio Studio',
       sub: 'Slow motion, fast forward, volume booster, and mute controls'
+    },
+    watermark_studio: {
+      title: 'Watermark Studio & Detector',
+      sub: 'Imperceptible keyed pixel watermarking, independent verification & diff inspector'
     },
     screen_recorder: {
       title: 'Screen & Camera Recorder',
@@ -345,6 +364,16 @@ document.addEventListener('DOMContentLoaded', () => {
       videoWidth = sourceVideo.videoWidth;
       videoHeight = sourceVideo.videoHeight;
 
+      // Update EditGraph source
+      currentEditGraph.setSource({
+        name: file.name,
+        duration: videoDuration,
+        width: videoWidth,
+        height: videoHeight,
+        sizeBytes: file.size,
+        hasAudio: true
+      });
+
       // Update info bar
       infoFileName.textContent = file.name;
       infoDuration.textContent = formatTime(videoDuration);
@@ -365,7 +394,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setPreviewMode('transform');
 
       // Recalculate cutter segments
-      recalculate();
+  recalculate();
 
       // Render initial preview
       setTimeout(() => {
@@ -788,27 +817,134 @@ document.addEventListener('DOMContentLoaded', () => {
      9. Auto Cutter Slicing Controls
   ------------------------------------------------------------- */
   modeDurationBtn.addEventListener('click', () => {
-    state.splitMode = 'duration';
-    modeDurationBtn.classList.add('active');
-    modePartsBtn.classList.remove('active');
-    durationControlGroup.style.display = 'flex';
-    partsControlGroup.style.display = 'none';
-    recalculate();
+  const modeSpatialGridBtn = document.getElementById('modeSpatialGridBtn');
+  const spatialGridControlGroup = document.getElementById('spatialGridControlGroup');
+  const gridRowsInput = document.getElementById('gridRowsInput');
+  const gridColsInput = document.getElementById('gridColsInput');
+  const gridTileInfo = document.getElementById('gridTileInfo');
+  const exportGridTilesBtn = document.getElementById('exportGridTilesBtn');
+  const gridPresetBtns = document.querySelectorAll('.grid-preset-btn');
+
+  function updateGridTileInfo() {
+    if (!gridTileInfo) return;
+    const r = parseInt(gridRowsInput?.value, 10) || 3;
+    const c = parseInt(gridColsInput?.value, 10) || 3;
+    const w = videoWidth || 1920;
+    const h = videoHeight || 1080;
+    const tiles = engine.calculateSpatialGrid(w, h, r, c);
+    const tileSample = tiles[0];
+    gridTileInfo.innerHTML = `📐 <strong>${r}×${c} Grid (${tiles.length} Tiles)</strong>: Base tile ~${tileSample.width}×${tileSample.height}px.<br><span style="color:#10b981;">✓ Exact integer partitioning (Zero overlap, zero pixel gaps).</span>`;
+    if (exportGridTilesBtn) {
+      exportGridTilesBtn.textContent = `🔲 Slice Video into ${tiles.length} Spatial Tiles`;
+    }
+  }
+
+  if (modeDurationBtn) {
+    modeDurationBtn.addEventListener('click', () => {
+      state.splitMode = 'duration';
+      [modeDurationBtn, modePartsBtn, modeSpatialGridBtn].forEach(b => b && b.classList.remove('active'));
+      modeDurationBtn.classList.add('active');
+      durationControlGroup.style.display = 'flex';
+      partsControlGroup.style.display = 'none';
+      if (spatialGridControlGroup) spatialGridControlGroup.style.display = 'none';
+      recalculate();
+    });
+  }
+
+  if (modePartsBtn) {
+    modePartsBtn.addEventListener('click', () => {
+      state.splitMode = 'parts';
+      [modeDurationBtn, modePartsBtn, modeSpatialGridBtn].forEach(b => b && b.classList.remove('active'));
+      modePartsBtn.classList.add('active');
+      durationControlGroup.style.display = 'none';
+      partsControlGroup.style.display = 'flex';
+      if (spatialGridControlGroup) spatialGridControlGroup.style.display = 'none';
+      recalculate();
+    });
+  }
+
+  if (modeSpatialGridBtn) {
+    modeSpatialGridBtn.addEventListener('click', () => {
+      state.splitMode = 'spatial_grid';
+      [modeDurationBtn, modePartsBtn, modeSpatialGridBtn].forEach(b => b && b.classList.remove('active'));
+      modeSpatialGridBtn.classList.add('active');
+      durationControlGroup.style.display = 'none';
+      partsControlGroup.style.display = 'none';
+      if (spatialGridControlGroup) spatialGridControlGroup.style.display = 'block';
+      updateGridTileInfo();
+    });
+  }
+
+  gridPresetBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      gridPresetBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (gridRowsInput) gridRowsInput.value = btn.dataset.rows;
+      if (gridColsInput) gridColsInput.value = btn.dataset.cols;
+      updateGridTileInfo();
+    });
   });
 
-  modePartsBtn.addEventListener('click', () => {
-    state.splitMode = 'parts';
-    modePartsBtn.classList.add('active');
-    modeDurationBtn.classList.remove('active');
-    durationControlGroup.style.display = 'none';
-    partsControlGroup.style.display = 'flex';
-    recalculate();
+  if (gridRowsInput) gridRowsInput.addEventListener('input', updateGridTileInfo);
+  if (gridColsInput) gridColsInput.addEventListener('input', updateGridTileInfo);
+
+  if (exportGridTilesBtn) {
+    exportGridTilesBtn.addEventListener('click', async () => {
+      if (isProcessing || !videoDuration) return;
+      isProcessing = true;
+      processingCard.style.display = 'flex';
+      resultsSection.style.display = 'none';
+      downloadAllZipBtn.style.display = 'inline-flex';
+      progressFill.style.width = '0%';
+      progressPercent.textContent = '0%';
+
+      const r = parseInt(gridRowsInput?.value, 10) || 3;
+      const c = parseInt(gridColsInput?.value, 10) || 3;
+      const totalTiles = r * c;
+      processingStatus.textContent = `Slicing video into ${totalTiles} spatial tiles...`;
+
+      try {
+        const gridResults = await engine.processSpatialGrid(
+          sourceVideo,
+          r,
+          c,
+          { hasAudio: state.hasAudio },
+          ({ currentTile, totalTiles, overallProgress }) => {
+            const pct = Math.round(overallProgress * 100);
+            progressFill.style.width = `${pct}%`;
+            progressPercent.textContent = `${pct}%`;
+            processingStatus.textContent = `Rendering Spatial Tile ${currentTile} of ${totalTiles}...`;
+          }
+        );
+
+        const displayList = gridResults.map((gr) => ({
+          segment: { index: gr.tile.index },
+          blob: gr.blob,
+          url: gr.url,
+          extension: gr.extension,
+          sizeBytes: gr.sizeBytes,
+          width: gr.width,
+          height: gr.height
+        }));
+
+        displayResults(displayList);
+      } catch (err) {
+        if (!err.message.includes('cancelled')) {
+          console.error(err);
+          alert('Spatial grid export error: ' + err.message);
+        }
+      } finally {
+        isProcessing = false;
+        processingCard.style.display = 'none';
+      }
+    });
+  }
   });
 
   durationInput.addEventListener('input', (e) => {
     state.duration = parseFloat(e.target.value) || 10;
     presetPills.forEach(p => p.classList.remove('active'));
-    recalculate();
+recalculate();
   });
 
   presetPills.forEach(pill => {
@@ -818,18 +954,18 @@ document.addEventListener('DOMContentLoaded', () => {
       const val = parseFloat(pill.dataset.val);
       state.duration = val;
       durationInput.value = val;
-      recalculate();
+  recalculate();
     });
   });
 
   partsInput.addEventListener('input', (e) => {
     state.parts = parseInt(e.target.value, 10) || 6;
-    recalculate();
+recalculate();
   });
 
   remainderSelect.addEventListener('change', (e) => {
     state.remainder = e.target.value;
-    recalculate();
+recalculate();
   });
 
   aspectCards.forEach(card => {
@@ -946,16 +1082,178 @@ document.addEventListener('DOMContentLoaded', () => {
   /* -------------------------------------------------------------
      11. Master Export Workflows (Single Omni Video OR Multi-Cutter)
   ------------------------------------------------------------- */
-  // Single-clip full video export (for Editor, Blur Brush, Transforms, Speed)
-  [exportEditedBtn, exportMaskedBtn, exportTransformBtn, exportSpeedVolumeBtn].forEach(btn => {
+  function syncEditGraphFromState() {
+    currentEditGraph.timeline.splitMode = state.splitMode;
+    currentEditGraph.timeline.splitDuration = state.duration;
+    currentEditGraph.timeline.splitParts = state.parts;
+    currentEditGraph.timeline.remainderPolicy = state.remainder;
+    currentEditGraph.timeline.speed = state.playbackSpeed;
+    currentEditGraph.timeline.inPoint = 0;
+    currentEditGraph.timeline.outPoint = videoDuration || 0;
+
+    currentEditGraph.effects.orientation = state.orientation;
+    currentEditGraph.effects.fitMode = state.fitMode;
+    currentEditGraph.effects.rotation = state.rotation;
+    currentEditGraph.effects.flipH = state.flipH;
+    currentEditGraph.effects.flipV = state.flipV;
+    currentEditGraph.effects.filterPreset = state.filterPreset;
+    currentEditGraph.effects.customFilters = { ...state.customFilters };
+    currentEditGraph.effects.motion.type = state.motionType;
+    currentEditGraph.effects.transition.type = state.transitionType;
+    currentEditGraph.effects.transition.duration = state.transDuration;
+    currentEditGraph.effects.blurMask.blurRadius = state.blurStrength;
+    currentEditGraph.effects.blurMask.frostedSheen = state.frostedSheen;
+    currentEditGraph.effects.watermark = { ...state.watermark };
+
+    currentEditGraph.audio.volume = state.volumeMultiplier;
+    currentEditGraph.audio.muted = state.isMuted;
+    currentEditGraph.exportSettings.resolution = state.resolution;
+  }
+
+  function applyEditGraphToUI(graph) {
+    if (!graph) return;
+
+    // Timeline & Split
+    state.splitMode = graph.timeline.splitMode || 'duration';
+    state.duration = graph.timeline.splitDuration || 10;
+    state.parts = graph.timeline.splitParts || 6;
+    state.remainder = graph.timeline.remainderPolicy || 'keep';
+    state.playbackSpeed = graph.timeline.speed || 1.0;
+
+    // Effects & Geometry
+    state.orientation = graph.effects.orientation || 'original';
+    state.fitMode = graph.effects.fitMode || 'blur';
+    state.rotation = graph.effects.rotation || 0;
+    state.flipH = !!graph.effects.flipH;
+    state.flipV = !!graph.effects.flipV;
+    state.filterPreset = graph.effects.filterPreset || 'none';
+    if (graph.effects.customFilters) {
+      state.customFilters = { ...state.customFilters, ...graph.effects.customFilters };
+    }
+    state.motionType = graph.effects.motion?.type || 'none';
+    state.transitionType = graph.effects.transition?.type || 'none';
+    state.transDuration = graph.effects.transition?.duration || 1.0;
+    state.blurStrength = graph.effects.blurMask?.blurRadius || 20;
+    state.frostedSheen = graph.effects.blurMask?.frostedSheen ?? 0.05;
+
+    // Audio & Settings
+    state.volumeMultiplier = graph.audio?.volume ?? 1.0;
+    state.isMuted = !!graph.audio?.muted;
+    state.resolution = graph.exportSettings?.resolution || '1080p';
+
+    // Synchronize UI DOM inputs
+    if (durationInput) durationInput.value = state.duration;
+    if (partsInput) partsInput.value = state.parts;
+    if (remainderSelect) remainderSelect.value = state.remainder;
+    if (speedSlider) { speedSlider.value = state.playbackSpeed; if (speedVal) speedVal.textContent = `${state.playbackSpeed}x`; }
+    if (volumeSlider) { volumeSlider.value = Math.round(state.volumeMultiplier * 100); if (volumeVal) volumeVal.textContent = `${Math.round(state.volumeMultiplier * 100)}%`; }
+    if (brightnessSlider) { brightnessSlider.value = state.customFilters.brightness; if (brightnessVal) brightnessVal.textContent = `${state.customFilters.brightness}%`; }
+    if (contrastSlider) { contrastSlider.value = state.customFilters.contrast; if (contrastVal) contrastVal.textContent = `${state.customFilters.contrast}%`; }
+    if (saturationSlider) { saturationSlider.value = state.customFilters.saturation; if (saturationVal) saturationVal.textContent = `${state.customFilters.saturation}%`; }
+    if (blurStrengthSlider) { blurStrengthSlider.value = state.blurStrength; if (blurStrengthVal) blurStrengthVal.textContent = `${state.blurStrength}px`; }
+
+    // Toggle filter preset card selection
+    document.querySelectorAll('.filter-card').forEach(card => {
+      card.classList.toggle('selected', card.dataset.filter === state.filterPreset);
+    });
+
+    // Toggle orientation button selection
+    document.querySelectorAll('.aspect-btn').forEach(btn => {
+      btn.classList.toggle('selected', btn.dataset.orientation === state.orientation);
+    });
+
+    // Toggle fit mode button selection
+    document.querySelectorAll('.fit-btn').forEach(btn => {
+      btn.classList.toggle('selected', btn.dataset.fit === state.fitMode);
+    });
+
+    // Watermark
+    if (graph.effects.watermark) {
+      state.watermark = { ...state.watermark, ...graph.effects.watermark };
+      const wmEnableCb = document.getElementById('wmEnableCheckbox');
+      const wmKeyInp = document.getElementById('wmSecretKeyInput');
+      const wmIdInp = document.getElementById('wmPayloadIdInput');
+      const wmStrInp = document.getElementById('wmStrengthSlider');
+      const wmStrVal = document.getElementById('wmStrengthVal');
+
+      if (wmEnableCb) wmEnableCb.checked = !!state.watermark.enabled;
+      if (wmKeyInp) wmKeyInp.value = state.watermark.key || '';
+      if (wmIdInp) wmIdInp.value = state.watermark.id || 12345;
+      if (wmStrInp) {
+        wmStrInp.value = state.watermark.strength || 2;
+        if (wmStrVal) wmStrVal.textContent = state.watermark.strength || 2;
+      }
+      const wmAlgoSel = document.getElementById('wmAlgorithmSelect');
+      if (wmAlgoSel) wmAlgoSel.value = state.watermark.algorithm || 'dct';
+    }
+
+    recalculate();
+    updatePreview();
+  }
+
+  // Project JSON Save / Load Bindings
+  const saveProjectBtn = document.getElementById('saveProjectBtn');
+  const loadProjectBtn = document.getElementById('loadProjectBtn');
+  const projectFileInput = document.getElementById('projectFileInput');
+
+  if (saveProjectBtn) {
+    saveProjectBtn.addEventListener('click', () => {
+      syncEditGraphFromState();
+      const jsonStr = currentEditGraph.toJSON();
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const baseName = (currentFile?.name || 'vidcut_project').replace(/\.[^/.]+$/, "");
+      a.download = `${baseName}_project.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  if (loadProjectBtn && projectFileInput) {
+    loadProjectBtn.addEventListener('click', () => projectFileInput.click());
+
+    projectFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const loadedGraph = EditGraph.fromJSON(event.target.result);
+          currentEditGraph = loadedGraph;
+          applyEditGraphToUI(loadedGraph);
+          alert('Project loaded successfully!');
+        } catch (err) {
+          alert('Failed to load project JSON: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+      projectFileInput.value = '';
+    });
+  }
+
+  // Single-clip full video export (for Editor, Blur Brush, Transforms, Speed, Watermark)
+  const exportWatermarkedBtn = document.getElementById('exportWatermarkedBtn');
+  [exportEditedBtn, exportMaskedBtn, exportTransformBtn, exportSpeedVolumeBtn, exportWatermarkedBtn].forEach(btn => {
     if (btn) {
-      btn.addEventListener('click', () => exportSingleOmniVideo());
+      btn.addEventListener('click', () => {
+        if (btn === exportWatermarkedBtn) {
+          state.watermark.enabled = true;
+          const wmEnableCb = document.getElementById('wmEnableCheckbox');
+          if (wmEnableCb) wmEnableCb.checked = true;
+        }
+        exportSingleOmniVideo();
+      });
     }
   });
 
   async function exportSingleOmniVideo() {
     if (isProcessing || !videoDuration) return;
 
+    syncEditGraphFromState();
     isProcessing = true;
     processingCard.style.display = 'flex';
     resultsSection.style.display = 'none';
@@ -964,46 +1262,26 @@ document.addEventListener('DOMContentLoaded', () => {
     progressPercent.textContent = '0%';
     processingStatus.textContent = 'Exporting video with Omni Studio effects...';
 
-    engine.initAudio(sourceVideo, state.volumeMultiplier);
-
-    const segment = {
-      index: 1,
-      start: 0,
-      end: videoDuration,
-      duration: videoDuration
-    };
+    const singleGraph = currentEditGraph.clone();
+    singleGraph.timeline.splitMode = 'duration';
+    singleGraph.timeline.splitDuration = videoDuration;
+    singleGraph.timeline.inPoint = 0;
+    singleGraph.timeline.outPoint = videoDuration;
 
     try {
-      const result = await engine.processSegment(
+      const results = await engine.exportPipeline(
+        singleGraph,
         sourceVideo,
-        segment,
-        {
-          orientation: state.orientation,
-          fitMode: state.fitMode,
-          resolution: state.resolution,
-          playbackSpeed: state.playbackSpeed,
-          volumeMultiplier: state.volumeMultiplier,
-          filterPreset: state.filterPreset,
-          customFilters: state.customFilters,
-          motionType: state.motionType,
-          transitionType: state.transitionType,
-          transDuration: state.transDuration,
-          rotation: state.rotation,
-          flipH: state.flipH,
-          flipV: state.flipV,
-          maskCanvas: maskCanvas,
-          blurStrength: state.blurStrength,
-          frostedSheen: state.frostedSheen
-        },
-        (prog) => {
-          const pct = Math.round(prog * 100);
+        maskCanvas,
+        ({ segmentProgress }) => {
+          const pct = Math.round(segmentProgress * 100);
           progressFill.style.width = `${pct}%`;
           progressPercent.textContent = `${pct}%`;
           processingStatus.textContent = `Rendering frame effects (${pct}%)...`;
         }
       );
 
-      displayResults([result]);
+      displayResults(results);
 
     } catch (err) {
       if (!err.message.includes('cancelled')) {
@@ -1020,6 +1298,7 @@ document.addEventListener('DOMContentLoaded', () => {
   masterCutBtn.addEventListener('click', async () => {
     if (isProcessing || calculatedSegments.length === 0) return;
 
+    syncEditGraphFromState();
     isProcessing = true;
     masterCutBtn.disabled = true;
     processingCard.style.display = 'flex';
@@ -1029,30 +1308,13 @@ document.addEventListener('DOMContentLoaded', () => {
     progressPercent.textContent = '0%';
     processingStatus.textContent = `Starting export of ${calculatedSegments.length} clips...`;
 
-    engine.initAudio(sourceVideo, state.volumeMultiplier);
     const startTime = performance.now();
 
     try {
-      generatedResults = await engine.processAllSegments(
+      generatedResults = await engine.exportPipeline(
+        currentEditGraph,
         sourceVideo,
-        calculatedSegments,
-        {
-          orientation: state.orientation,
-          fitMode: state.fitMode,
-          resolution: state.resolution,
-          playbackSpeed: state.playbackSpeed,
-          volumeMultiplier: state.volumeMultiplier,
-          filterPreset: state.filterPreset,
-          customFilters: state.customFilters,
-          motionType: state.motionType,
-          transitionType: state.transitionType,
-          rotation: state.rotation,
-          flipH: state.flipH,
-          flipV: state.flipV,
-          maskCanvas: maskCanvas,
-          blurStrength: state.blurStrength,
-          frostedSheen: state.frostedSheen
-        },
+        maskCanvas,
         ({ currentIndex, totalSegments, overallProgress }) => {
           const pct = Math.round(overallProgress * 100);
           progressFill.style.width = `${pct}%`;
@@ -1182,6 +1444,395 @@ document.addEventListener('DOMContentLoaded', () => {
       downloadAllZipBtn.textContent = '📦 Download All as ZIP';
     }
   });
+
+  /* -------------------------------------------------------------
+     13. Watermark Studio & Independent Detector Workflows
+  ------------------------------------------------------------- */
+  const wmSubtabEmbed = document.getElementById('wmSubtabEmbed');
+  const wmSubtabVerify = document.getElementById('wmSubtabVerify');
+  const wmSubtabDiff = document.getElementById('wmSubtabDiff');
+  const wmSectionEmbed = document.getElementById('wmSectionEmbed');
+  const wmSectionVerify = document.getElementById('wmSectionVerify');
+  const wmSectionDiff = document.getElementById('wmSectionDiff');
+
+  // Subtab switching
+  if (wmSubtabEmbed && wmSubtabVerify && wmSubtabDiff) {
+    const switchWmSubtab = (activeTab, activeSec) => {
+      [wmSubtabEmbed, wmSubtabVerify, wmSubtabDiff].forEach(t => t.classList.remove('active'));
+      [wmSectionEmbed, wmSectionVerify, wmSectionDiff].forEach(s => s.style.display = 'none');
+      activeTab.classList.add('active');
+      activeSec.style.display = 'block';
+    };
+
+    wmSubtabEmbed.addEventListener('click', () => switchWmSubtab(wmSubtabEmbed, wmSectionEmbed));
+    wmSubtabVerify.addEventListener('click', () => switchWmSubtab(wmSubtabVerify, wmSectionVerify));
+    wmSubtabDiff.addEventListener('click', () => {
+      switchWmSubtab(wmSubtabDiff, wmSectionDiff);
+      renderDiffInspector('diff');
+    });
+  }
+
+  // Embed controls
+  const wmEnableCheckbox = document.getElementById('wmEnableCheckbox');
+  const wmSecretKeyInput = document.getElementById('wmSecretKeyInput');
+  const wmRandomKeyBtn = document.getElementById('wmRandomKeyBtn');
+  const wmPayloadIdInput = document.getElementById('wmPayloadIdInput');
+  const wmStrengthSlider = document.getElementById('wmStrengthSlider');
+  const wmStrengthVal = document.getElementById('wmStrengthVal');
+  const wmAlgorithmSelect = document.getElementById('wmAlgorithmSelect');
+
+  if (wmAlgorithmSelect) {
+    wmAlgorithmSelect.addEventListener('change', (e) => {
+      state.watermark.algorithm = e.target.value;
+      updatePreview();
+    });
+  }
+
+  if (wmEnableCheckbox) {
+    wmEnableCheckbox.addEventListener('change', (e) => {
+      state.watermark.enabled = e.target.checked;
+      updatePreview();
+    });
+  }
+
+  if (wmSecretKeyInput) {
+    wmSecretKeyInput.addEventListener('input', (e) => {
+      state.watermark.key = e.target.value.trim();
+      const detKey = document.getElementById('detectorSecretKeyInput');
+      if (detKey) detKey.value = state.watermark.key;
+    });
+  }
+
+  if (wmRandomKeyBtn) {
+    wmRandomKeyBtn.addEventListener('click', () => {
+      const charset = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      let randKey = 'vc-';
+      for (let i = 0; i < 12; i++) {
+        randKey += charset.charAt(Math.floor(Math.random() * charset.length));
+      }
+      state.watermark.key = randKey;
+      if (wmSecretKeyInput) wmSecretKeyInput.value = randKey;
+      const detKey = document.getElementById('detectorSecretKeyInput');
+      if (detKey) detKey.value = randKey;
+    });
+  }
+
+  if (wmPayloadIdInput) {
+    wmPayloadIdInput.addEventListener('input', (e) => {
+      state.watermark.id = parseInt(e.target.value, 10) || 12345;
+    });
+  }
+
+  if (wmStrengthSlider && wmStrengthVal) {
+    wmStrengthSlider.addEventListener('input', (e) => {
+      state.watermark.strength = parseInt(e.target.value, 10) || 2;
+      wmStrengthVal.textContent = state.watermark.strength;
+      updatePreview();
+    });
+  }
+
+  // Independent Detector
+  const detectorDropzone = document.getElementById('detectorDropzone');
+  const detectorFileInput = document.getElementById('detectorFileInput');
+  const detectorFileLabel = document.getElementById('detectorFileLabel');
+  const detectorSecretKeyInput = document.getElementById('detectorSecretKeyInput');
+  const runDetectorBtn = document.getElementById('runDetectorBtn');
+  const detectorResultCard = document.getElementById('detectorResultCard');
+  const detectorStatusBadge = document.getElementById('detectorStatusBadge');
+  const detectorConfidenceVal = document.getElementById('detectorConfidenceVal');
+  const detectorConfidenceBar = document.getElementById('detectorConfidenceBar');
+  const detectorWatermarkId = document.getElementById('detectorWatermarkId');
+  const detectorZScore = document.getElementById('detectorZScore');
+  const detectorCrcStatus = document.getElementById('detectorCrcStatus');
+  const detectorFramesAnalyzed = document.getElementById('detectorFramesAnalyzed');
+  const detectorMessage = document.getElementById('detectorMessage');
+
+  let detectorSelectedFile = null;
+
+  if (detectorDropzone && detectorFileInput) {
+    detectorDropzone.addEventListener('click', () => detectorFileInput.click());
+    detectorFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        detectorSelectedFile = e.target.files[0];
+        detectorFileLabel.textContent = `Selected: ${detectorSelectedFile.name} (${formatBytes(detectorSelectedFile.size)})`;
+      }
+    });
+
+    detectorDropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      detectorDropzone.style.borderColor = 'var(--accent-primary)';
+    });
+
+    detectorDropzone.addEventListener('dragleave', () => {
+      detectorDropzone.style.borderColor = 'var(--border-color)';
+    });
+
+    detectorDropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      detectorDropzone.style.borderColor = 'var(--border-color)';
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        detectorSelectedFile = e.dataTransfer.files[0];
+        detectorFileLabel.textContent = `Selected: ${detectorSelectedFile.name} (${formatBytes(detectorSelectedFile.size)})`;
+      }
+    });
+  }
+
+  if (runDetectorBtn) {
+    runDetectorBtn.addEventListener('click', async () => {
+      const fileToVerify = detectorSelectedFile || currentFile;
+      if (!fileToVerify) {
+        alert('Please choose or drop an exported video file to verify.');
+        return;
+      }
+      const key = (detectorSecretKeyInput?.value || state.watermark.key || '').trim();
+      if (!key) {
+        alert('Please provide the secret verification key.');
+        return;
+      }
+
+      runDetectorBtn.disabled = true;
+      runDetectorBtn.textContent = '⏳ Analyzing video frames...';
+      detectorResultCard.style.display = 'block';
+      detectorStatusBadge.className = 'badge';
+      detectorStatusBadge.style.background = '#6366f1';
+      detectorStatusBadge.textContent = 'Decoding & Analyzing...';
+      detectorConfidenceVal.textContent = '0%';
+      detectorConfidenceBar.style.width = '0%';
+      detectorConfidenceBar.style.background = '#6366f1';
+
+      try {
+        const result = await WatermarkEngine.detectWatermark(
+          fileToVerify,
+          key,
+          { numFrames: 12, samplesPerBit: 48 },
+          ({ framesAnalyzed, totalFrames, progress }) => {
+            const pct = Math.round(progress * 100);
+            detectorConfidenceVal.textContent = `Analyzing ${framesAnalyzed}/${totalFrames} frames...`;
+            detectorConfidenceBar.style.width = `${pct}%`;
+          }
+        );
+
+        // Update Readout
+        detectorConfidenceVal.textContent = `${result.confidence}%`;
+        detectorConfidenceBar.style.width = `${result.confidence}%`;
+        detectorWatermarkId.textContent = result.watermarkId !== null ? result.watermarkId : 'None';
+        detectorZScore.textContent = `${result.zScore}σ`;
+        detectorCrcStatus.textContent = result.crcValid ? '✅ Valid (Integrity Verified)' : '❌ Mismatch / Invalid';
+        detectorFramesAnalyzed.textContent = `${result.framesAnalyzed} frames`;
+        detectorMessage.textContent = result.verdictMessage;
+
+        if (result.status === 'DETECTED') {
+          detectorStatusBadge.className = 'badge';
+          detectorStatusBadge.style.background = '#10b981';
+          detectorStatusBadge.textContent = '✅ Verified (Watermark Detected)';
+          detectorConfidenceBar.style.background = '#10b981';
+        } else if (result.status === 'INCONCLUSIVE') {
+          detectorStatusBadge.className = 'badge';
+          detectorStatusBadge.style.background = '#f59e0b';
+          detectorStatusBadge.textContent = '⚠️ Inconclusive';
+          detectorConfidenceBar.style.background = '#f59e0b';
+        } else {
+          detectorStatusBadge.className = 'badge';
+          detectorStatusBadge.style.background = '#ef4444';
+          detectorStatusBadge.textContent = '❌ Watermark Not Detected';
+          detectorConfidenceBar.style.background = '#ef4444';
+        }
+
+      } catch (err) {
+        console.error('Detector error:', err);
+        detectorStatusBadge.className = 'badge';
+        detectorStatusBadge.style.background = '#ef4444';
+        detectorStatusBadge.textContent = '❌ Error';
+        detectorMessage.textContent = 'Detection failed: ' + err.message;
+      } finally {
+        runDetectorBtn.disabled = false;
+        runDetectorBtn.textContent = '🔍 Run Independent Verification';
+      }
+    });
+  }
+
+  // Visual Difference Inspector
+  const diffViewOriginalBtn = document.getElementById('diffViewOriginalBtn');
+  const diffViewWatermarkedBtn = document.getElementById('diffViewWatermarkedBtn');
+  const diffViewAmplifiedBtn = document.getElementById('diffViewAmplifiedBtn');
+  const wmDiffCanvas = document.getElementById('wmDiffCanvas');
+  const diffViewCaption = document.getElementById('diffViewCaption');
+
+  function renderDiffInspector(mode) {
+    if (!wmDiffCanvas || !sourceVideo || sourceVideo.readyState < 2) return;
+
+    [diffViewOriginalBtn, diffViewWatermarkedBtn, diffViewAmplifiedBtn].forEach(b => {
+      if (b) b.classList.remove('active');
+    });
+
+    const w = 480;
+    const h = Math.round(w * (sourceVideo.videoHeight / (sourceVideo.videoWidth || 1))) || 270;
+    wmDiffCanvas.width = w;
+    wmDiffCanvas.height = h;
+    const ctx = wmDiffCanvas.getContext('2d');
+
+    // Create temp original canvas
+    const origCanvas = document.createElement('canvas');
+    origCanvas.width = w;
+    origCanvas.height = h;
+    const oCtx = origCanvas.getContext('2d');
+    oCtx.drawImage(sourceVideo, 0, 0, w, h);
+
+    // Create temp watermarked canvas
+    const wmCanvas = document.createElement('canvas');
+    wmCanvas.width = w;
+    wmCanvas.height = h;
+    const wCtx = wmCanvas.getContext('2d');
+    wCtx.drawImage(sourceVideo, 0, 0, w, h);
+    WatermarkEngine.embedFrame(wCtx, w, h, {
+      enabled: true,
+      key: state.watermark.key,
+      id: state.watermark.id,
+      strength: state.watermark.strength,
+      samplesPerBit: 48
+    }, sourceVideo.currentTime);
+
+    if (mode === 'orig') {
+      if (diffViewOriginalBtn) diffViewOriginalBtn.classList.add('active');
+      ctx.drawImage(origCanvas, 0, 0);
+      if (diffViewCaption) diffViewCaption.textContent = 'Showing: Original Video Frame (No Watermark)';
+    } else if (mode === 'wm') {
+      if (diffViewWatermarkedBtn) diffViewWatermarkedBtn.classList.add('active');
+      ctx.drawImage(wmCanvas, 0, 0);
+      if (diffViewCaption) diffViewCaption.textContent = 'Showing: Watermarked Video Frame (Imperceptible to Human Eye)';
+    } else {
+      if (diffViewAmplifiedBtn) diffViewAmplifiedBtn.classList.add('active');
+      WatermarkEngine.computeVisualDifference(origCanvas, wmCanvas, wmDiffCanvas, 30);
+      if (diffViewCaption) diffViewCaption.textContent = 'Showing: 30× Amplified Luminance Delta (Revealing Keyed Pixel Pattern)';
+    }
+  }
+
+  if (diffViewOriginalBtn) diffViewOriginalBtn.addEventListener('click', () => renderDiffInspector('orig'));
+  if (diffViewWatermarkedBtn) diffViewWatermarkedBtn.addEventListener('click', () => renderDiffInspector('wm'));
+  if (diffViewAmplifiedBtn) diffViewAmplifiedBtn.addEventListener('click', () => renderDiffInspector('diff'));
+
+  /* -------------------------------------------------------------
+     14. Merge Videos Panel Workflows
+  ------------------------------------------------------------- */
+  const mergeDropzone = document.getElementById('mergeDropzone');
+  const mergeFileInput = document.getElementById('mergeFileInput');
+  const mergeClipsList = document.getElementById('mergeClipsList');
+  const startMergeBtn = document.getElementById('startMergeBtn');
+
+  let mergeVideoFiles = [];
+
+  if (mergeDropzone && mergeFileInput) {
+    mergeDropzone.addEventListener('click', () => mergeFileInput.click());
+
+    const handleMergeFiles = (files) => {
+      for (const f of files) {
+        if (f.type.startsWith('video/') || f.name.match(/\.(mp4|webm|mov|mkv)$/i)) {
+          mergeVideoFiles.push(f);
+        }
+      }
+      renderMergeList();
+    };
+
+    mergeFileInput.addEventListener('change', (e) => {
+      if (e.target.files) handleMergeFiles(e.target.files);
+    });
+
+    mergeDropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      mergeDropzone.style.borderColor = 'var(--accent-primary)';
+    });
+
+    mergeDropzone.addEventListener('dragleave', () => {
+      mergeDropzone.style.borderColor = 'var(--border-color)';
+    });
+
+    mergeDropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      mergeDropzone.style.borderColor = 'var(--border-color)';
+      if (e.dataTransfer.files) handleMergeFiles(e.dataTransfer.files);
+    });
+  }
+
+  function renderMergeList() {
+    if (!mergeClipsList) return;
+    mergeClipsList.innerHTML = '';
+
+    if (mergeVideoFiles.length === 0) {
+      if (startMergeBtn) startMergeBtn.style.display = 'none';
+      return;
+    }
+
+    mergeVideoFiles.forEach((f, idx) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 6px; font-size: 12.5px;';
+      row.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <span style="background: var(--accent-primary); color: #fff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;">${idx + 1}</span>
+          <span style="color: var(--text-main); font-weight: 500;">${f.name}</span>
+          <span style="color: var(--text-dim); font-size: 11px;">(${formatBytes(f.size)})</span>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm remove-clip-btn" data-index="${idx}" style="padding: 2px 8px; font-size: 11px;">✕</button>
+      `;
+      mergeClipsList.appendChild(row);
+    });
+
+    mergeClipsList.querySelectorAll('.remove-clip-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.target.dataset.index, 10);
+        mergeVideoFiles.splice(idx, 1);
+        renderMergeList();
+      });
+    });
+
+    if (startMergeBtn) {
+      startMergeBtn.style.display = mergeVideoFiles.length >= 2 ? 'block' : 'none';
+      startMergeBtn.textContent = `🔗 Concatenate & Export ${mergeVideoFiles.length} Merged Clips`;
+    }
+  }
+
+  if (startMergeBtn) {
+    startMergeBtn.addEventListener('click', async () => {
+      if (isProcessing || mergeVideoFiles.length < 2) return;
+
+      isProcessing = true;
+      startMergeBtn.disabled = true;
+      processingCard.style.display = 'flex';
+      resultsSection.style.display = 'none';
+      downloadAllZipBtn.style.display = 'none';
+      progressFill.style.width = '0%';
+      progressPercent.textContent = '0%';
+      processingStatus.textContent = `Merging ${mergeVideoFiles.length} clips into continuous video...`;
+
+      try {
+        const result = await engine.rejoinVideos(mergeVideoFiles, { width: 1280, height: 720 }, ({ currentClip, totalClips, overallProgress }) => {
+          const pct = Math.round(overallProgress * 100);
+          progressFill.style.width = `${pct}%`;
+          progressPercent.textContent = `${pct}%`;
+          processingStatus.textContent = `Merging Clip ${currentClip} of ${totalClips}...`;
+        });
+
+        displayResults([{
+          segment: { index: 1 },
+          blob: result.blob,
+          url: result.url,
+          extension: result.extension,
+          sizeBytes: result.sizeBytes,
+          width: result.width,
+          height: result.height
+        }]);
+
+      } catch (err) {
+        if (!err.message.includes('cancelled')) {
+          console.error(err);
+          alert('Merge error: ' + err.message);
+        }
+      } finally {
+        isProcessing = false;
+        startMergeBtn.disabled = false;
+        processingCard.style.display = 'none';
+      }
+    });
+  }
 
   /* -------------------------------------------------------------
      Helpers

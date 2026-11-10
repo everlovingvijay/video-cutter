@@ -401,6 +401,17 @@ class VideoEngine {
     ctx.filter = 'none';
     this.applyTransitions(ctx, targetW, targetH, transitionType, currentTime, totalDuration, transDuration);
 
+    // 5. Imperceptible Keyed Watermark Embedding (if configured)
+    if (options.watermark && options.watermark.enabled) {
+      if (typeof window !== 'undefined' && window.WatermarkEngine) {
+        try {
+          window.WatermarkEngine.embedFrame(ctx, targetW, targetH, options.watermark, currentTime);
+        } catch (wmErr) {
+          console.warn('Watermark embed notice:', wmErr);
+        }
+      }
+    }
+
     // Restore context if motion or transforms were applied
     if (motionType !== 'none') {
       ctx.restore();
@@ -577,11 +588,13 @@ class VideoEngine {
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
-    const ctx = canvas.getContext('2d', { alpha: false });
+    const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: !!(config.watermark && config.watermark.enabled) });
 
-    const fps = 30;
+    const fps = config.fps || 30;
     const canvasStream = canvas.captureStream(fps);
-    const audioTracks = this.audioDestNode ? this.audioDestNode.stream.getAudioTracks() : [];
+    const audioTracks = (config.hasAudio !== false && this.audioDestNode)
+      ? this.audioDestNode.stream.getAudioTracks()
+      : [];
     const stream = new MediaStream([
       ...canvasStream.getVideoTracks(),
       ...audioTracks
@@ -630,16 +643,26 @@ class VideoEngine {
 
         this.setVolume(volumeMultiplier);
 
-        const segTotalSec = segment.duration;
+        const segTotalSec = Math.max(0.01, segment.duration);
         const curProgress = 0;
 
-        // Draw initial frame
+        // 1. Draw initial frame synchronously to eliminate initial black frame
         this.drawFrame(ctx, video, width, height, {
           ...config,
-          currentTime: segment.start,
+          currentTime: 0,
           totalDuration: segTotalSec,
           progress: curProgress
         });
+
+        // Push initial frame to captureStream pipeline
+        const videoTracks = canvasStream.getVideoTracks();
+        if (videoTracks.length > 0 && typeof videoTracks[0].requestFrame === 'function') {
+          try { videoTracks[0].requestFrame(); } catch (_) {}
+        }
+
+        // Brief delay for encoder pipeline sync
+        await new Promise(r => setTimeout(r, 40));
+        if (isAborted) return;
 
         recorder.start(100);
         video.playbackRate = playbackSpeed;
@@ -667,7 +690,17 @@ class VideoEngine {
           if (isAborted) return;
 
           if (video.currentTime >= segment.end || video.ended) {
-            recorder.stop();
+            // Render final clamped frame
+            this.drawFrame(ctx, video, width, height, {
+              ...config,
+              currentTime: segTotalSec,
+              totalDuration: segTotalSec,
+              progress: 1.0
+            });
+            if (recorder.state !== 'inactive') {
+              try { recorder.requestData(); } catch (_) {}
+              recorder.stop();
+            }
             return;
           }
 
@@ -705,7 +738,9 @@ class VideoEngine {
    */
   async processAllSegments(video, segments, config, onOverallProgress) {
     this.abortController = new AbortController();
-    this.initAudio(video, config.volumeMultiplier || 1.0);
+    if (config.hasAudio !== false) {
+      this.initAudio(video, config.volumeMultiplier || 1.0);
+    }
 
     const results = [];
     const total = segments.length;
@@ -746,6 +781,34 @@ class VideoEngine {
     }
 
     return results;
+  }
+
+  /**
+   * Unified Non-Destructive Export Pipeline
+   * Consumes an EditGraph (or config object) and coordinates multi-clip or single-clip rendering.
+   */
+  async exportPipeline(editGraphOrConfig, video, maskCanvas = null, onOverallProgress = null) {
+    let config;
+    let segments;
+
+    if (editGraphOrConfig && typeof editGraphOrConfig.toPipelineConfig === 'function') {
+      const validation = editGraphOrConfig.validate ? editGraphOrConfig.validate() : { valid: true };
+      if (!validation.valid) {
+        throw new Error(`Invalid EditGraph: ${validation.errors.join(', ')}`);
+      }
+      config = editGraphOrConfig.toPipelineConfig(maskCanvas);
+      segments = editGraphOrConfig.getSegments();
+    } else {
+      config = { ...editGraphOrConfig, maskCanvas };
+      segments = editGraphOrConfig.segments || [{
+        index: 1,
+        start: 0,
+        end: video.duration || 1,
+        duration: video.duration || 1
+      }];
+    }
+
+    return await this.processAllSegments(video, segments, config, onOverallProgress);
   }
 
   /**
@@ -846,6 +909,326 @@ class VideoEngine {
         const blob = new Blob(chunks, { type: mime });
         resolve({ blob, ext, mime });
       };
+    });
+  }
+
+  /**
+   * Computes exact integer tile partition for any width/height and row/col grid.
+   * Remainder pixels are distributed deterministically so sum(widths) === width and sum(heights) === height.
+   */
+  calculateSpatialGrid(width, height, rows = 3, cols = 3) {
+    const r = Math.max(1, parseInt(rows, 10) || 3);
+    const c = Math.max(1, parseInt(cols, 10) || 3);
+
+    const baseW = Math.floor(width / c);
+    const remW = width % c;
+    const baseH = Math.floor(height / r);
+    const remH = height % r;
+
+    const colWidths = [];
+    for (let j = 0; j < c; j++) colWidths.push(baseW + (j < remW ? 1 : 0));
+    const rowHeights = [];
+    for (let i = 0; i < r; i++) rowHeights.push(baseH + (i < remH ? 1 : 0));
+
+    const colXs = [];
+    let currX = 0;
+    for (let j = 0; j < c; j++) {
+      colXs.push(currX);
+      currX += colWidths[j];
+    }
+
+    const rowYs = [];
+    let currY = 0;
+    for (let i = 0; i < r; i++) {
+      rowYs.push(currY);
+      currY += rowHeights[i];
+    }
+
+    const tiles = [];
+    let idx = 1;
+    for (let i = 0; i < r; i++) {
+      for (let j = 0; j < c; j++) {
+        tiles.push({
+          index: idx++,
+          row: i + 1,
+          col: j + 1,
+          x: colXs[j],
+          y: rowYs[i],
+          width: colWidths[j],
+          height: rowHeights[i]
+        });
+      }
+    }
+    return tiles;
+  }
+
+  /**
+   * Process a single spatial tile as an independent video clip
+   */
+  async processSpatialTile(video, tile, config = {}, onProgress = null) {
+    // Round to even dimensions for video encoder compliance
+    const targetW = tile.width % 2 === 0 ? tile.width : tile.width - 1;
+    const targetH = tile.height % 2 === 0 ? tile.height : tile.height - 1;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+
+    const fps = 30;
+    const canvasStream = canvas.captureStream(fps);
+    const audioTracks = (config.hasAudio !== false && this.audioDestNode)
+      ? this.audioDestNode.stream.getAudioTracks()
+      : [];
+    const stream = new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...audioTracks
+    ]);
+
+    const { mime, ext } = this.getBestMimeType();
+    const recorder = new MediaRecorder(stream, { mimeType: mime });
+    const chunks = [];
+    recorder.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+    return new Promise(async (resolve, reject) => {
+      let isAborted = false;
+      let animId = null;
+
+      if (this.abortController) {
+        this.abortController.signal.addEventListener('abort', () => {
+          isAborted = true;
+          if (animId) cancelAnimationFrame(animId);
+          try { video.pause(); } catch(e){}
+          try { if (recorder.state !== 'inactive') recorder.stop(); } catch(e){}
+          reject(new Error('Process cancelled by user.'));
+        });
+      }
+
+      try {
+        video.pause();
+        await new Promise((res) => {
+          const onSeeked = () => {
+            video.removeEventListener('seeked', onSeeked);
+            res();
+          };
+          video.addEventListener('seeked', onSeeked);
+          video.currentTime = 0;
+        });
+
+        const totalDur = Math.max(0.1, video.duration || 1);
+
+        // Pre-render initial frame
+        ctx.drawImage(video, tile.x, tile.y, tile.width, tile.height, 0, 0, targetW, targetH);
+        await new Promise(r => setTimeout(r, 40));
+        if (isAborted) return;
+
+        recorder.start(100);
+
+        recorder.onstop = () => {
+          video.pause();
+          if (animId) cancelAnimationFrame(animId);
+          const blob = new Blob(chunks, { type: mime });
+          const url = URL.createObjectURL(blob);
+          resolve({
+            tile,
+            blob,
+            url,
+            extension: ext,
+            mimeType: mime,
+            sizeBytes: blob.size,
+            width: targetW,
+            height: targetH
+          });
+        };
+
+        const renderLoop = () => {
+          if (isAborted) return;
+
+          if (video.currentTime >= totalDur || video.ended) {
+            ctx.drawImage(video, tile.x, tile.y, tile.width, tile.height, 0, 0, targetW, targetH);
+            if (recorder.state !== 'inactive') {
+              try { recorder.requestData(); } catch (_) {}
+              recorder.stop();
+            }
+            return;
+          }
+
+          ctx.drawImage(video, tile.x, tile.y, tile.width, tile.height, 0, 0, targetW, targetH);
+          const prog = Math.min(1.0, video.currentTime / totalDur);
+          if (onProgress) onProgress(prog);
+
+          animId = requestAnimationFrame(renderLoop);
+        };
+
+        await video.play();
+        animId = requestAnimationFrame(renderLoop);
+
+      } catch (err) {
+        if (animId) cancelAnimationFrame(animId);
+        try { video.pause(); } catch(e){}
+        try { if (recorder.state !== 'inactive') recorder.stop(); } catch(e){}
+        reject(err);
+      }
+    });
+  }
+
+  /**
+   * Process all spatial grid tiles into separate video clips
+   */
+  async processSpatialGrid(video, rows = 3, cols = 3, config = {}, onOverallProgress = null) {
+    this.abortController = new AbortController();
+    const tiles = this.calculateSpatialGrid(video.videoWidth, video.videoHeight, rows, cols);
+    const results = [];
+    const total = tiles.length;
+
+    for (let i = 0; i < total; i++) {
+      if (this.abortController.signal.aborted) {
+        throw new Error('Processing cancelled by user.');
+      }
+
+      const tile = tiles[i];
+      const res = await this.processSpatialTile(video, tile, config, (prog) => {
+        if (onOverallProgress) {
+          const overall = (i + prog) / total;
+          onOverallProgress({
+            currentTile: i + 1,
+            totalTiles: total,
+            tileProgress: prog,
+            overallProgress: overall
+          });
+        }
+      });
+
+      results.push(res);
+      if (onOverallProgress) {
+        onOverallProgress({
+          currentTile: i + 1,
+          totalTiles: total,
+          tileProgress: 1.0,
+          overallProgress: (i + 1) / total
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Multi-Clip Video Joiner / Concatenator
+   * Sequentially plays and records multiple video sources into a single merged video file.
+   */
+  async rejoinVideos(sources, config = {}, onProgress = null) {
+    if (!sources || sources.length === 0) throw new Error('No video sources provided to rejoin.');
+
+    this.abortController = new AbortController();
+    const targetW = config.width || 1280;
+    const targetH = config.height || 720;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+
+    const stream = canvas.captureStream(30);
+    const { mime, ext } = this.getBestMimeType();
+    const recorder = new MediaRecorder(stream, { mimeType: mime });
+    const chunks = [];
+    recorder.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+    return new Promise(async (resolve, reject) => {
+      let isAborted = false;
+      this.abortController.signal.addEventListener('abort', () => {
+        isAborted = true;
+        try { if (recorder.state !== 'inactive') recorder.stop(); } catch(e){}
+        reject(new Error('Rejoin process cancelled by user.'));
+      });
+
+      recorder.start(100);
+
+      const totalVideos = sources.length;
+
+      for (let i = 0; i < totalVideos; i++) {
+        if (isAborted) return;
+        const src = sources[i];
+
+        const v = document.createElement('video');
+        v.muted = true;
+        v.playsInline = true;
+        let blobUrl = null;
+
+        if (typeof src === 'string') {
+          v.src = src;
+        } else if (src instanceof Blob) {
+          blobUrl = URL.createObjectURL(src);
+          v.src = blobUrl;
+        }
+
+        await new Promise((res, rej) => {
+          v.onloadedmetadata = res;
+          v.onerror = rej;
+          v.load();
+        });
+
+        const vDur = Math.max(0.1, v.duration || 1);
+
+        await new Promise(async (clipDone) => {
+          let animId = null;
+
+          const renderFrame = () => {
+            if (isAborted || v.currentTime >= vDur || v.ended) {
+              if (animId) cancelAnimationFrame(animId);
+              v.pause();
+              clipDone();
+              return;
+            }
+
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, targetW, targetH);
+            const scale = Math.min(targetW / v.videoWidth, targetH / v.videoHeight);
+            const dw = v.videoWidth * scale;
+            const dh = v.videoHeight * scale;
+            const dx = (targetW - dw) / 2;
+            const dy = (targetH - dh) / 2;
+            ctx.drawImage(v, dx, dy, dw, dh);
+
+            if (onProgress) {
+              const clipProg = Math.min(1.0, v.currentTime / vDur);
+              const overall = (i + clipProg) / totalVideos;
+              onProgress({
+                currentClip: i + 1,
+                totalClips: totalVideos,
+                clipProgress: clipProg,
+                overallProgress: overall
+              });
+            }
+
+            animId = requestAnimationFrame(renderFrame);
+          };
+
+          await v.play();
+          animId = requestAnimationFrame(renderFrame);
+        });
+
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+      }
+
+      recorder.onstop = () => {
+        const mergedBlob = new Blob(chunks, { type: mime });
+        const url = URL.createObjectURL(mergedBlob);
+        resolve({
+          blob: mergedBlob,
+          url,
+          extension: ext,
+          mimeType: mime,
+          sizeBytes: mergedBlob.size,
+          width: targetW,
+          height: targetH
+        });
+      };
+
+      if (recorder.state !== 'inactive') {
+        recorder.stop();
+      }
     });
   }
 }
